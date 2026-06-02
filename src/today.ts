@@ -2,6 +2,7 @@
 import { CALENDAR_SYSTEMS, CONFIG_DEFAULTS } from './config.js';
 import { COLOR_THEMES, SEASON_SETS, STYLES, script_name, state_name } from './constants.js';
 import { _sourceAllowedForCalendar, applyCalendarSystem, applySeasonSet, defaults, ensureSettings, getAutoSuppressedSources, getCal, refreshAndSend, refreshCalendarState, resetToDefaults, sourceSuppressionState, titleCase } from './state.js';
+import { handleTokenCommand } from './token.js';
 import { colorsAPI } from './color.js';
 import { _invalidateSerialCache, _isLeapMonth, fromSerial, toSerial, todaySerial } from './date-math.js';
 import { DaySpec, Parse } from './parsing.js';
@@ -394,6 +395,15 @@ export var commands = {
 
   setup: function(m){
     whisperUi(m.who, 'Setup is already complete.');
+  },
+
+  // §10 cross-script setup token consumer. Pasted from the web app's
+  // "Copy configuration token" affordance — applies world / date /
+  // variant / palette / lunar anchors / planar anchors to the running
+  // session in one shot. GM-only; handler does its own playerIsGM gate
+  // since it reads msg.content directly (not the args-array path).
+  token: function(m){
+    handleTokenCommand(m);
   },
 
   effects: { gm:true, run:function(m){
