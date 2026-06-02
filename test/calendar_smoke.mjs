@@ -207,7 +207,7 @@ assert(handlersFor('ready').length > 0, 'Bundle should register a ready handler.
 trigger('ready');
 assert(handlersFor('chat:message').length > 0, 'Ready handler should register chat command routing.');
 assert(
-  globalThis._chatLog.some((entry) => String(entry.msg || '').includes("Welcome to Party Buff's Calendar")),
+  globalThis._chatLog.some((entry) => /Welcome to Party Buff(&#39;|')s Roll20 Calendar/.test(String(entry.msg || ''))),
   'Fresh installs should prompt the GM to run setup.'
 );
 
