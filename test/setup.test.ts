@@ -19,15 +19,8 @@ function lastChat() {
   return log[log.length - 1] || null;
 }
 
-function startEberronSetup() {
-  handleInput(gmMsg("!cal setup calendar eberron"));
-  handleInput(gmMsg("!cal setup variant standard"));
-  handleInput(gmMsg("!cal setup date default"));
-  handleInput(gmMsg("!cal setup season eberron"));
-  handleInput(gmMsg("!cal setup theme default"));
-  handleInput(gmMsg("!cal setup defaults on"));
-  handleInput(gmMsg("!cal setup moons on"));
-  handleInput(gmMsg("!cal setup planes on"));
+function chatLog() {
+  return (globalThis as any)._chatLog as Array<{ who: string; msg: string; opts: any }>;
 }
 
 describe("Setup onboarding", () => {
@@ -51,16 +44,25 @@ describe("Setup onboarding", () => {
     assertEquals(getSetupState().status, "complete");
   });
 
-  it("ready prompt whispers the exact welcome text through noarchive", () => {
+  it("ready prompt whispers the welcome with all eight world picker buttons", () => {
     freshInstall();
     notifySetupStatusOnReady();
     const msg = lastChat();
     assert(msg);
-    assert(msg.msg.includes("Welcome to Party Buff's Calendar! It looks like this is the first time the calendar has been used in this game. Would you like to initialize it?"));
+    // Title carries an apostrophe — esc() emits &#39; so match on the
+    // HTML-encoded form.
+    assert(/Welcome to Party Buff(&#39;|')s Roll20 Calendar/.test(msg.msg));
+    assert(/Select a calendar to get started/.test(msg.msg));
+    // The button-emit pattern in this script renders chat buttons that
+    // emit !cal setup pick <world>. We don't pin the exact HTML, just
+    // confirm each canonical world's pick command is included.
+    for (const sysKey of ['eberron', 'faerunian', 'greyhawk', 'dragonlance', 'exandria', 'mystara', 'birthright', 'gregorian']) {
+      assert(msg.msg.includes('setup pick ' + sysKey), `welcome missing pick button for ${sysKey}`);
+    }
     assertEquals(msg.opts.noarchive, true);
   });
 
-  it("shows the updated initialized summary without action buttons after setup is complete", () => {
+  it("shows the boot summary without action buttons after setup is complete", () => {
     freshInstall();
     completeSetup();
     notifySetupStatusOnReady();
@@ -92,35 +94,61 @@ describe("Setup onboarding", () => {
     assert(lastChat().msg.includes("Calendar is waiting for the GM to finish setup"));
   });
 
-  it("routes a GM root command into the setup wizard before initialization", () => {
+  it("routes a GM root command into the welcome before initialization", () => {
     freshInstall();
     handleInput(gmMsg("!cal"));
-    assert(lastChat().msg.includes("Calendar Setup"));
-    assert(lastChat().msg.includes("Step 1: Setting"));
-  });
-
-  it("auto-selects the lone Forgotten Realms calendar and explains it", () => {
-    freshInstall();
-    handleInput(gmMsg("!cal setup calendar faerunian"));
-    assert(lastChat().msg.includes("Harptos Calendar"));
-    assert(lastChat().msg.includes("Forgotten Realms"));
-    assert(lastChat().msg.includes("Step 3: Current In-Game Date"));
-  });
-
-  it("applies a default Eberron setup flow and marks the campaign complete", () => {
-    freshInstall();
-    startEberronSetup();
-    handleInput(gmMsg("!cal setup apply"));
-    assertEquals(getSetupState().status, "complete");
-    assert((globalThis as any)._chatLog.length > 0);
-  });
-
-  it("goes straight to the review step after planes are enabled", () => {
-    freshInstall();
-    startEberronSetup();
     const msg = lastChat();
-    assert(msg && msg.msg.includes("Calendar Setup - Review"), "expected to land on the review step after planes toggle");
-    assert(!msg.msg.includes("Planar Initialization"), "wrapper should not run a planar-init wizard");
+    assert(msg);
+    assert(/Welcome to Party Buff(&#39;|')s Roll20 Calendar/.test(msg.msg));
+    assert(/Select a calendar to get started/.test(msg.msg));
+  });
+
+  it("setup pick <world> applies the world default and completes setup", () => {
+    freshInstall();
+    handleInput(gmMsg("!cal setup pick eberron"));
+    assertEquals(getSetupState().status, "complete");
+    const root = (globalThis as any).state[state_name];
+    assertEquals(root.settings.calendarSystem, "eberron");
+    // colorTheme stays null in the default factory; tokens drive
+    // customization, not the pick action.
+    assertEquals(root.settings.colorTheme, null);
+  });
+
+  it("setup pick <world> fires the post-pick chain — chosen / reset / token / learn-more", () => {
+    freshInstall();
+    const before = chatLog().length;
+    handleInput(gmMsg("!cal setup pick eberron"));
+    const cards = chatLog().slice(before).map((e) => e.msg).join('\n');
+    // Apostrophes are HTML-escaped (&#39;) — match the rendered form.
+    assert(/You(&#39;|')ve chosen/i.test(cards), 'missing chosen-world card');
+    assert(/resetcalendar/i.test(cards), 'missing reset hint card');
+    assert(/token/i.test(cards), 'missing token hint card');
+    assert(/partybuff\.com/i.test(cards), 'missing learn-more URL card');
+  });
+
+  it("setup pick <unknown> shows an error and stays uninitialized", () => {
+    freshInstall();
+    handleInput(gmMsg("!cal setup pick mars"));
+    assertEquals(getSetupState().status, "uninitialized");
+    assert(/Unknown world/i.test(lastChat().msg));
+  });
+
+  it("setup pick works for every offered world", () => {
+    for (const sysKey of ['eberron', 'faerunian', 'greyhawk', 'dragonlance', 'exandria', 'mystara', 'birthright', 'gregorian']) {
+      freshInstall();
+      handleInput(gmMsg(`!cal setup pick ${sysKey}`));
+      assertEquals(
+        getSetupState().status,
+        "complete",
+        `pick ${sysKey} should complete setup`,
+      );
+      const root = (globalThis as any).state[state_name];
+      assertEquals(
+        root.settings.calendarSystem,
+        sysKey,
+        `pick ${sysKey} should set calendarSystem`,
+      );
+    }
   });
 
   it("resetcalendar returns the campaign to the onboarding gate", () => {
