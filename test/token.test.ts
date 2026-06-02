@@ -173,6 +173,88 @@ describe('parseToken — decode and structural validation', () => {
   });
 });
 
+describe('parseToken — Dragonlance krynnAnchor and per-moon constraints', () => {
+  const DL_DATE = { kind: 'month' as const, year: 350, monthIndex: 0, day: 1 };
+  const DL_BASE = { v: 1, world: 'dragonlance', date: DL_DATE };
+
+  it('accepts krynnAnchor on a Dragonlance token', () => {
+    const token = expectOk(parseToken(encode({
+      ...DL_BASE,
+      krynnAnchor: { kind: 'month', year: 350, monthIndex: 6, day: 14 },
+    })));
+    assertEquals(token.krynnAnchor?.day, 14);
+  });
+
+  it('rejects krynnAnchor on non-Dragonlance tokens', () => {
+    expectFail(
+      parseToken(encode({
+        ...MIN_VALID,
+        krynnAnchor: { kind: 'month', year: 998, monthIndex: 0, day: 1 },
+      })),
+      /dragonlance/i,
+    );
+  });
+
+  it('rejects krynnAnchor that is not month-kind', () => {
+    expectFail(
+      parseToken(encode({
+        ...DL_BASE,
+        krynnAnchor: { kind: 'intercalary', year: 350, intercalaryKey: 'x', day: 1 },
+      })),
+      /month-kind/i,
+    );
+  });
+
+  it('rejects non-Krynn moon keys in Dragonlance lunarAnchors', () => {
+    expectFail(
+      parseToken(encode({
+        ...DL_BASE,
+        lunarAnchors: { olarune: { year: 350, monthIndex: 0, day: 1, phase: 'full' } },
+      })),
+      /dragonlance has no moon/i,
+    );
+  });
+
+  it('rejects Krynn lunarAnchors that disagree on date or phase', () => {
+    expectFail(
+      parseToken(encode({
+        ...DL_BASE,
+        lunarAnchors: {
+          solinari: { year: 350, monthIndex: 6, day: 14, phase: 'full' },
+          lunitari: { year: 350, monthIndex: 6, day: 14, phase: 'full' },
+          nuitari: { year: 350, monthIndex: 6, day: 15, phase: 'full' },
+        },
+      })),
+      /disagrees with the triad/i,
+    );
+  });
+
+  it('rejects krynnAnchor and lunarAnchors together on Dragonlance', () => {
+    expectFail(
+      parseToken(encode({
+        ...DL_BASE,
+        krynnAnchor: { kind: 'month', year: 350, monthIndex: 6, day: 14 },
+        lunarAnchors: { solinari: { year: 350, monthIndex: 6, day: 14, phase: 'full' } },
+      })),
+      /either krynnanchor or lunaranchors/i,
+    );
+  });
+
+  it('accepts legacy triplicated Krynn lunarAnchors when all entries agree', () => {
+    const token = expectOk(parseToken(encode({
+      ...DL_BASE,
+      lunarAnchors: {
+        solinari: { year: 350, monthIndex: 6, day: 14, phase: 'full' },
+        lunitari: { year: 350, monthIndex: 6, day: 14, phase: 'full' },
+        nuitari: { year: 350, monthIndex: 6, day: 14, phase: 'full' },
+      },
+    })));
+    // Parse leaves the entries on the token as-is; applyToken does the
+    // translation to canonical krynnAnchor on persistence.
+    assertEquals(Object.keys(token.lunarAnchors ?? {}).length, 3);
+  });
+});
+
 describe('applyToken — writes setup to state.PartyBuffCalendar', () => {
   beforeEach(() => {
     freshAndComplete();
@@ -223,6 +305,39 @@ describe('applyToken — writes setup to state.PartyBuffCalendar', () => {
     assertEquals(root.imported.lunarAnchors.olarune.phase, 'full');
     assertEquals(root.imported.planarAnchors.daanvi, 5);
     assertEquals(root.imported.schemaVersion, 1);
+  });
+
+  it('persists krynnAnchor directly when the producer sent the canonical shape', () => {
+    applyToken({
+      v: 1,
+      world: 'dragonlance',
+      date: { kind: 'month', year: 350, monthIndex: 0, day: 1 },
+      krynnAnchor: { kind: 'month', year: 350, monthIndex: 6, day: 14 },
+    });
+    const root = (globalThis as any).state[state_name];
+    assert(root.imported);
+    assertEquals(root.imported.krynnAnchor.day, 14);
+    assertEquals(Object.keys(root.imported.lunarAnchors).length, 0);
+  });
+
+  it('translates legacy triplicated full Krynn lunarAnchors into krynnAnchor', () => {
+    applyToken({
+      v: 1,
+      world: 'dragonlance',
+      date: { kind: 'month', year: 350, monthIndex: 0, day: 1 },
+      lunarAnchors: {
+        solinari: { year: 350, monthIndex: 6, day: 14, phase: 'full' },
+        lunitari: { year: 350, monthIndex: 6, day: 14, phase: 'full' },
+        nuitari: { year: 350, monthIndex: 6, day: 14, phase: 'full' },
+      },
+    });
+    const root = (globalThis as any).state[state_name];
+    assert(root.imported.krynnAnchor);
+    assertEquals(root.imported.krynnAnchor.day, 14);
+    assertEquals(root.imported.krynnAnchor.monthIndex, 6);
+    // Translated entries are stripped from lunarAnchors so PR 2c sees
+    // only one Dragonlance path.
+    assertEquals(Object.keys(root.imported.lunarAnchors).length, 0);
   });
 
   it('snapshots previous and new date labels in the result', () => {

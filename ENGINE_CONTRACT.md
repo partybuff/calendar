@@ -10,13 +10,16 @@ The engine may expose more than what is listed here. This document only
 specifies what the Roll20 wrapper imports.
 
 This contract is the v0.1.0 baseline. The seven initial-draft questions
-were resolved 2026-05-26. A follow-up revision (this one) lifts the
-"canon-only" constraint on the planar API to accept per-campaign
-anchor offsets, parallels that on the moons API for per-campaign
-lunar anchors, corrects the Long Shadows mechanic from
-phase-override to cycle-shift, and adds the cross-script token
-format (§10). See §8 for the full change-log. Subsequent revisions
-ride in their own PRs.
+were resolved 2026-05-26. The §8.1 revision lifted the "canon-only"
+constraint on the planar API to accept per-campaign anchor offsets,
+paralleled that on the moons API for per-campaign lunar anchors,
+corrected the Long Shadows mechanic from phase-override to cycle-shift,
+and added the cross-script token format (§10). The §8.2 revision
+(this one) refactors the moons API to an opts-bag signature, adds
+Dragonlance's `krynnAnchor` (Night-of-the-Eye world-level anchor —
+the per-moon `anchors` map is invalid for Krynn), and pins the always-on
+Therendor↔Barrakas anti-phase coupling lore mechanic. See §8 for the
+full change-log. Subsequent revisions ride in their own PRs.
 
 ---
 
@@ -281,12 +284,21 @@ interface MoonPhase {
   readonly longShadows: boolean;   // Eberron-only canon: see "Long Shadows note" below. false for all non-Eberron moons.
 }
 
+// Per-call options. The two anchor surfaces are world-specific:
+// `anchors` for the per-moon map (Eberron, Faerûn, Greyhawk, Exandria,
+// Mystara, Birthright, Gregorian) and `krynnAnchor` for Dragonlance's
+// world-level Night-of-the-Eye conjunction.
+interface PhaseOptions {
+  readonly anchors?: Readonly<Record<string, MoonAnchor>>;
+  readonly krynnAnchor?: CalendarDate;   // Dragonlance only; must be kind: 'month'
+}
+
 const moons: {
   // all moons for a world on a given date
   phasesOn(
     world: WorldId,
     date: CalendarDate,
-    anchors?: Readonly<Record<string, MoonAnchor>>,
+    opts?: PhaseOptions,
   ): readonly MoonPhase[];
 
   // single moon, single date
@@ -294,7 +306,7 @@ const moons: {
     world: WorldId,
     moonKey: string,
     date: CalendarDate,
-    anchors?: Readonly<Record<string, MoonAnchor>>,
+    opts?: PhaseOptions,
   ): MoonPhase;
 
   // when is the next Full / New for this moon, starting from date?
@@ -305,7 +317,7 @@ const moons: {
     fromDate: CalendarDate,
     event: 'full' | 'new',
     withinDays?: number,           // default 365
-    anchors?: Readonly<Record<string, MoonAnchor>>,
+    opts?: PhaseOptions,
   ): CalendarDate | null;
 };
 ```
@@ -319,8 +331,37 @@ const moons: {
   anchor is internally translated into a one-cycle nudge so the
   declared date lands as new; the standard cycle resumes from there.
 - The engine reads anchors and emits phases deterministically. There is
-  no "anchor lookup" side effect — pass the same `anchors` blob for
+  no "anchor lookup" side effect — pass the same `opts` blob for
   every query in a campaign and the engine will agree with itself.
+
+**Dragonlance `krynnAnchor` — world-level anchor:**
+- Krynn canon: Solinari, Lunitari, and Nuitari only conjunct on the
+  Night of the Eye; the triad slides together as one event, never
+  individually. Per-moon `anchors` entries for Krynn moons are
+  non-canonical and the token consumer (§10) rejects them.
+- `krynnAnchor` takes a single `CalendarDate` (`kind: 'month'` only;
+  intercalary is invalid) and pins all three Krynn moons to full on
+  that date. The engine internally synthesizes the equivalent
+  triplet-anchor map.
+- On non-Dragonlance worlds `krynnAnchor` is ignored — those worlds
+  anchor via `anchors`.
+- If both `anchors` and `krynnAnchor` are passed on a Dragonlance
+  call, `krynnAnchor` wins inside the engine. The token format (§10)
+  rejects the combination at parse time so producers must pick one.
+
+**Always-on lore mechanics:**
+The engine applies two canon mechanics with no opt-out short of a
+consumer-supplied anchor for the affected moon.
+- **Long Shadows** (Eberron): see "Long Shadows note" below.
+- **Therendor ↔ Barrakas anti-phase coupling** (Eberron): Barrakas
+  (cycle 63.3115d) drifts in loose anti-phase with Therendor
+  (34.735d); each Barrakas full/new pair gets pulled toward
+  Therendor's nearest full by `gain × phaseError`, clamped at
+  ±1 day. The engine exports `COUPLING_GAIN = 0.2` and
+  `COUPLING_MAX_SHIFT_DAYS = 1.0` from `@partybuff/calendar-engine/moons`
+  for consumers that want to surface the values; both are constants
+  in v0.2.x. A consumer-supplied anchor on Barrakas suppresses
+  coupling for that moon (the explicit campaign intent wins).
 
 **Removed from the Roll20 surface but the engine may still expose for the
 web app:** sky position, altitude, azimuth, hour angle, eclipse detection,
@@ -545,6 +586,40 @@ becomes a viewer-plus-date-mover, never a configurator.
    script reads it via a single chat command and applies it to
    `state.PartyBuffCalendar`.
 
+### 8.2 Revision — moons opts-bag, Dragonlance krynnAnchor, Therendor↔Barrakas coupling
+
+Auditing the published engine surface against the worlds-canon list
+exposed two gaps. The §8.1 per-moon `anchors` map was modelled on
+Eberron/Faerûn/Greyhawk semantics (each moon anchored individually);
+Dragonlance does not allow individual moon anchors at all, and the
+Eberron Therendor↔Barrakas anti-phase coupling lore mechanic was
+missing from the engine surface (the wrapper carried a sequence-based
+port of it that the inflection-based engine couldn't host). This
+revision lands both in the engine and reshapes the moons API.
+
+1. **Moons API — `PhaseOptions` opts bag.** `moons.phasesOn` /
+   `phaseOf` / `nextEvent` now take a single `opts?: PhaseOptions`
+   argument in place of the positional `anchors?`. The opts shape is
+   `{ anchors?, krynnAnchor? }`. Pre-publish refactor — the §8.1
+   `anchors?` signature was never shipped in a stable engine release,
+   so the reshape doesn't break any pinned consumer. (§5.3)
+2. **Dragonlance `krynnAnchor`.** New `krynnAnchor?: CalendarDate`
+   option (kind `'month'` only) and matching `Token.krynnAnchor` field
+   pin all three Krynn moons to full on Night of the Eye. Per-moon
+   anchors for Krynn moons are non-canonical and the token validator
+   rejects them; legacy producer tokens that triplicated the
+   conjunction across `lunarAnchors.solinari` / `.lunitari` /
+   `.nuitari` are accepted-with-translation as a v=1 transition
+   affordance. (§5.3, §10.1, §10.2.11–12)
+3. **Therendor ↔ Barrakas anti-phase coupling (Eberron, always-on).**
+   The engine now applies the canon coupling per cycle: Barrakas's
+   full/new pair gets pulled toward Therendor's nearest full by
+   `gain × phaseError`, clamped at ±1 day. A consumer-supplied
+   anchor on Barrakas suppresses coupling. The constants
+   `COUPLING_GAIN = 0.2` and `COUPLING_MAX_SHIFT_DAYS = 1.0` are
+   exported from `@partybuff/calendar-engine/moons` for consumers
+   that want to surface them. (§5.3)
+
 ## 9. Reference: what the wrapper does with this
 
 For grounding. None of this affects the contract.
@@ -594,8 +669,9 @@ interface Token {
   readonly date: CalendarDate;                            // see §5.1
   readonly variant?: string;                              // calendar variant key (e.g. 'standard') — absent = world default
   readonly palette?: string;                              // month-header palette key — absent = world default
-  readonly lunarAnchors?: Readonly<Record<string, MoonAnchor>>;   // see §5.3
-  readonly planarAnchors?: Readonly<Record<string, number>>;     // see §5.4 (PlanarPositions)
+  readonly lunarAnchors?: Readonly<Record<string, MoonAnchor>>;   // see §5.3 — invalid on Dragonlance (use krynnAnchor)
+  readonly krynnAnchor?: CalendarDate;                    // Dragonlance only; kind: 'month'; see §5.3
+  readonly planarAnchors?: Readonly<Record<string, number>>;     // see §5.4 (PlanarPositions); Eberron only
 }
 ```
 
@@ -631,6 +707,19 @@ when:
    are Eberron-only; non-Eberron tokens with a non-empty
    `planarAnchors` are invalid.
 10. The decoded payload is not valid JSON or is not a plain object.
+11. `krynnAnchor` is present on a non-Dragonlance token, or its
+    `kind` is not `'month'`, or any of its `year` / `monthIndex` /
+    `day` fields are missing / wrong type / out-of-range for the
+    world's calendar.
+12. A Dragonlance token carries `lunarAnchors` with any non-Krynn moon
+    key (Dragonlance has no other moons in canon), OR with Krynn keys
+    (`solinari` / `lunitari` / `nuitari`) that disagree on date or
+    phase (the triad must conjunct as one event), OR carries both
+    `krynnAnchor` and `lunarAnchors` (ambiguous intent — pick one).
+    Consumers MAY accept a Dragonlance token whose `lunarAnchors`
+    triplicates the same conjunction across all three Krynn keys
+    (the legacy producer shape) and translate it to `krynnAnchor`
+    on application; this is a transition affordance for v=1.
 
 Validation failures surface the engine's human-readable error
 message to the GM (via `/w gm` for Roll20).
@@ -673,9 +762,10 @@ the same release window. Mixed-version pastes fail loud, not silent.
 
 ---
 
-*Status: v0.1.0 baseline with §8.1 revision. Engine implementation
-of the §5.3/§5.4 argument additions, the Long Shadows cycle-shift
-correction, and the §10 token format follows in `partybuff/party-
-buff`. Roll20 wrapper rewrite to consume the new arguments and the
-token follows in this repo. Subsequent contract revisions ride in
-their own PRs.*
+*Status: v0.1.0 baseline with §8.1 + §8.2 revisions. §8.2 engine
+implementation (opts-bag refactor, `krynnAnchor`, Therendor↔Barrakas
+coupling) shipped in `@partybuff/calendar-engine@0.2.4`. Roll20
+wrapper consumption follows in this repo: token validator updates
+land with this revision; the moon/plane query call sites (PR 2c)
+follow once the engine bump merges. Subsequent contract revisions
+ride in their own PRs.*
