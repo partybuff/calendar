@@ -9,9 +9,14 @@ engine can be designed to fit without churn.
 The engine may expose more than what is listed here. This document only
 specifies what the Roll20 wrapper imports.
 
-This contract is the v0.1.0 target. The seven open questions from the
-initial draft were resolved with the engine author on 2026-05-26 — see
-§8 for the change-log entry. Subsequent revisions ride in their own PRs.
+This contract is the v0.1.0 baseline. The seven initial-draft questions
+were resolved 2026-05-26. A follow-up revision (this one) lifts the
+"canon-only" constraint on the planar API to accept per-campaign
+anchor offsets, parallels that on the moons API for per-campaign
+lunar anchors, corrects the Long Shadows mechanic from
+phase-override to cycle-shift, and adds the cross-script token
+format (§10). See §8 for the full change-log. Subsequent revisions
+ride in their own PRs.
 
 ---
 
@@ -246,6 +251,16 @@ interface Moon {
   readonly associatedMonthIndex?: number; // for worlds where a moon "rules" a month
 }
 
+// Per-campaign anchor declaration. The phase discriminator lets a
+// consumer declare either a known full or a known new moon date as
+// the campaign's reference point; the engine takes it from there.
+interface MoonAnchor {
+  readonly year: number;
+  readonly monthIndex: number;     // 0-based, into world.calendar.months
+  readonly day: number;            // 1-based
+  readonly phase: 'full' | 'new';
+}
+
 type MoonPhaseLabel =
   | 'New'
   | 'Waxing Crescent'
@@ -268,10 +283,19 @@ interface MoonPhase {
 
 const moons: {
   // all moons for a world on a given date
-  phasesOn(world: WorldId, date: CalendarDate): readonly MoonPhase[];
+  phasesOn(
+    world: WorldId,
+    date: CalendarDate,
+    anchors?: Readonly<Record<string, MoonAnchor>>,
+  ): readonly MoonPhase[];
 
   // single moon, single date
-  phaseOf(world: WorldId, moonKey: string, date: CalendarDate): MoonPhase;
+  phaseOf(
+    world: WorldId,
+    moonKey: string,
+    date: CalendarDate,
+    anchors?: Readonly<Record<string, MoonAnchor>>,
+  ): MoonPhase;
 
   // when is the next Full / New for this moon, starting from date?
   // returns the date of that event, or null if not within `withinDays`.
@@ -281,9 +305,22 @@ const moons: {
     fromDate: CalendarDate,
     event: 'full' | 'new',
     withinDays?: number,           // default 365
+    anchors?: Readonly<Record<string, MoonAnchor>>,
   ): CalendarDate | null;
 };
 ```
+
+**Anchor model:**
+- The `anchors` argument is keyed by `Moon.key`. Each entry overrides
+  the engine's canonical anchor for that moon for the duration of the
+  call. Moons not present in `anchors` use canon.
+- Both `'full'` and `'new'` phases are accepted. A full-phase anchor
+  replaces the moon's canonical reference date wholesale. A new-phase
+  anchor is internally translated into a one-cycle nudge so the
+  declared date lands as new; the standard cycle resumes from there.
+- The engine reads anchors and emits phases deterministically. There is
+  no "anchor lookup" side effect — pass the same `anchors` blob for
+  every query in a campaign and the engine will agree with itself.
 
 **Removed from the Roll20 surface but the engine may still expose for the
 web app:** sky position, altitude, azimuth, hour angle, eclipse detection,
@@ -292,20 +329,34 @@ sun-relative geometry. The wrapper does not import these.
 **Long Shadows note:** the Roll20 wrapper *does* surface the Eberron Long
 Shadows gobble effect via `MoonPhase.longShadows`. Long Shadows is a canon
 event anchored at Vult 26–28 (with a tapered window — distance 0: ±3 days,
-distance 1: ±2 days, distance ≥2: ±1 day per the implementation in
-`src/moon.ts`). When the date falls in the window AND the relevant moon
-is in its gobbled-dark state, `longShadows: true`. It's a phase-output
-concern (the moon appears dark when it would otherwise be illuminated),
-not a sky-position one. Deterministic both directions; engine ports
-faithfully from the existing implementation.
+distance 1: ±2 days, distance ≥2: ±1 day).
+
+**Mechanic — cycle-shift, not override.** For each affected moon, the
+engine ships *pre-programmed one-cycle nudges* — the same internal
+mechanism that translates a consumer-declared new-phase anchor (above)
+into the standard math. The shift relocates that year's relevant new-
+moon date to land within the gobble window; the cycle leading into that
+new moon stretches or compresses to accommodate; the standard `cycleDays`
+period resumes from the shifted new moon onward. The moon is *genuinely*
+in its New phase on the gobble day — not "lit-but-rendered-dark."
+
+`MoonPhase.longShadows: true` surfaces on phase output during the window
+so renderers can visually distinguish a Long-Shadows-driven New from a
+routine cycle New. The flag is rendering metadata only; the underlying
+phase math is correct without it.
+
+No GM tuning of the gobble window, no GM choice of which moons are
+affected, no opt-out. The window dates, the affected moons, and the
+per-year shift amounts are all canon and ship with the engine.
 
 ### 5.4 Planes (Eberron only)
 
 The Roll20 wrapper surfaces planar events as entries in the **events**
 list — not as their own subsystem. So the engine only needs to expose
 "what planes are active on this date" and "when does the next phase change
-happen." No subsystem-level queries, no GM overrides, no generated drifts.
-Canon-anchored only.
+happen." No subsystem-level queries, no randomization, no generated
+drifts. Per-campaign anchor offsets (one number per plane) are accepted
+via the optional `positions` argument; everything else is canon.
 
 ```ts
 type PlanarPhase = 'coterminous' | 'remote' | 'neutral';
@@ -331,29 +382,39 @@ interface PlanarState {
   readonly phaseDuration: number;  // total days in the current phase
 }
 
+// Per-campaign anchor offset table. Keys are Plane.key, values are
+// day-count offsets applied to the canonical cycle. Absent keys =
+// canon position. Missing argument = all canon.
+type PlanarPositions = Readonly<Record<string, number>>;
+
 const planes: {
   // all planes for Eberron on a given date
-  statesOn(date: CalendarDate): readonly PlanarState[];
+  statesOn(date: CalendarDate, positions?: PlanarPositions): readonly PlanarState[];
 
   // single plane on a single date
-  stateOf(planeKey: string, date: CalendarDate): PlanarState;
+  stateOf(planeKey: string, date: CalendarDate, positions?: PlanarPositions): PlanarState;
 
   // only the planes currently in a non-neutral phase (coterminous or remote)
   // — this is what the events list surfaces
-  activeOn(date: CalendarDate): readonly PlanarState[];
+  activeOn(date: CalendarDate, positions?: PlanarPositions): readonly PlanarState[];
 
   // upcoming phase changes in a window — for "what's coming up" lists
   upcoming(
     fromDate: CalendarDate,
     withinDays: number,
+    positions?: PlanarPositions,
   ): readonly { plane: Plane; from: PlanarPhase; to: PlanarPhase; on: CalendarDate }[];
 };
 ```
 
 **Notes:**
-- The engine seeds Eberron's planar cycles from canon. No GM-tunable
-  anchors. No "generated drifts" / off-cycle shifts that the current Roll20
-  script supports. Canon-only.
+- The engine seeds Eberron's planar cycles from canon. The `positions`
+  argument lets a consumer (e.g. the web app, where GMs tune anchors)
+  declare per-campaign offsets — one integer per plane. This is *not*
+  the dropped "generated drifts" feature, which randomized off-cycle
+  wobbles at runtime; that mechanic is permanently out. Per-campaign
+  offsets are deterministic: the same `positions` blob always yields the
+  same states.
 - `WorldId` argument is omitted on plane functions because planes are
   Eberron-only in v0.1.0. If another world later gains planes, we revisit.
 - `activeOn` exists so the Roll20 events view can do
@@ -398,7 +459,8 @@ import them and the contract makes no commitments about their shape:
 - Moon sky position (altitude, azimuth, compass, hour angle)
 - Eclipse detection and eclipse math
 - Forecast-lens knowledge-tier system (DC ladders, zones A/B/C/D, tails)
-- Custom-event storage (lives in Roll20 `state.*`, not engine)
+- Custom-event storage (lives in Roll20 `state.*`, not engine; tokens
+  do **not** carry custom events — see §10)
 - Anything UI: layouts, components, rolltemplates, button HTML
 - Roll20 API objects (`sendChat`, `findObjs`, `playerIsGM`, etc.)
 
@@ -425,7 +487,8 @@ above; they're listed here as a single change-log entry.
 2. **Long Shadows on `MoonPhase`** → kept. `MoonPhase.longShadows: boolean`
    is always present (false everywhere except Eberron under canon window).
    The gobble mechanic — tapered window distances ±3 / ±2 / ±1 — ports
-   faithfully from the existing Roll20 implementation. (§5.3)
+   faithfully from the existing Roll20 implementation. (§5.3) *Revised
+   in §8.1: cycle-shift mechanic, not phase-override.*
 3. **`Serial` namespace** → per-world. No cross-world epoch exists in canon.
    (§5.2)
 4. **Intercalary days** → not interleaved into the canonical month list.
@@ -446,22 +509,173 @@ above; they're listed here as a single change-log entry.
 **Future-but-not-blocking:** `Plane.effects` strings will need templating
 support eventually for web-app interpolation; not in v0.1.0.
 
+### 8.1 Revision — per-campaign anchors, Long Shadows correction, cross-script token
+
+This revision lifts the v0.1.0 "canon-only" stance to admit per-
+campaign anchor data on both the moons and planes APIs, corrects
+the Long Shadows mechanic from phase-override to cycle-shift, and
+introduces the cross-script token format (§10). Roll20 setup that
+used to live in the script's own menus (variant, palette, anchors)
+now flows from the web app via a pasted token; the Roll20 script
+becomes a viewer-plus-date-mover, never a configurator.
+
+1. **Moons API — `anchors?` argument** added to `moons.phasesOn` /
+   `phaseOf` / `nextEvent`. Keyed by `Moon.key`. Each entry overrides
+   the engine's canonical anchor for that moon. Both `'full'` and
+   `'new'` phases are accepted. (§5.3)
+2. **Planes API — `positions?` argument** added to `planes.statesOn` /
+   `stateOf` / `activeOn` / `upcoming`. Keyed by `Plane.key`. Each
+   entry is an integer day offset applied to the canonical cycle.
+   Generated drifts / randomization remain permanently out. (§5.4)
+3. **Long Shadows — cycle-shift mechanic.** The affected moons'
+   new-moon date for the year is moved into the Vult 26–28 gobble
+   window via pre-programmed engine `phaseShifts`. The cycle around
+   that shift stretches or compresses; the standard period resumes
+   from the shifted new moon. The phase math is genuinely New on
+   the gobble day. `MoonPhase.longShadows: true` stays as a
+   rendering hint so consumers can visually distinguish a Long-
+   Shadows-driven New from a routine cycle New. The previous
+   "moon appears dark when it would otherwise be illuminated"
+   wording was misleading and is retired. (§5.3)
+4. **Cross-script token (§10).** Spec for a portable setup-only
+   token that the web app emits and the Roll20 script consumes.
+   Carries world id, current date, calendar variant, palette
+   choice, lunar anchors, and planar anchor offsets — no campaign
+   content (custom events, notes, weather, forecast). The Roll20
+   script reads it via a single chat command and applies it to
+   `state.PartyBuffCalendar`.
+
 ## 9. Reference: what the wrapper does with this
 
 For grounding. None of this affects the contract.
 
 - **State persistence:** Roll20 wrapper persists `{ worldId, currentDate,
-  customEvents, viewPreferences, version }` in `state.PartyBuffCalendar`.
-- **GM commands:** `!cal set world <id>`, `!cal set date <date>`,
-  `!cal advance N`, `!cal retreat N`, `!cal event add|remove|list`,
-  `!cal send <view>`, `!cal show <view>`, `!cal help`.
-- **Views:** today, month, moons (phases only), planes-as-events,
-  holidays, help. Button-first UX; `!cal` is the only chat entry point.
+  variant, palette, lunarAnchors, planarAnchors, viewPreferences,
+  schemaVersion }` in `state.PartyBuffCalendar`. There are no
+  `customEvents` — event content is engine canon only, configured per-
+  campaign via packs that the web app gates and the Roll20 surface
+  shows wholesale (no per-pack toggle in Roll20).
+- **GM commands:** `!cal set date <date>`, `!cal advance [N]`,
+  `!cal retreat [N]`, `!cal token <paste>`, `!cal resetcalendar`,
+  `!cal help`. The `!cal event` / `!cal source` / `!cal theme` /
+  `!cal variant` / `!cal seasons` families from the pre-revision
+  script are retired; their configuration moves entirely to the web
+  app and flows in via §10 tokens.
+- **Views:** today, month (with adjacent shoulder week), rolling 3-
+  month, year, next year, previous year, lunar (full moons list),
+  planar (planes list). Button-first UX; `!cal` is the only chat
+  entry point.
 - **Player surface:** read-only views, no admin controls. No knowledge
   tiers — full information for all players.
 
+## 10. Cross-script token format
+
+The Roll20 wrapper and the `@partybuff/party-buff` web app share
+`@partybuff/calendar-engine` and therefore compute dates, moons,
+and planes identically given the same anchors. To let GMs configure
+their calendar in the web app — where setup-heavy operations (anchors,
+variants, palettes) have a real UI — and apply that configuration to
+a running Roll20 game, both sides agree on a portable token format.
+
+The token carries **setup only** — never campaign content. Custom
+events, custom moons, notes, lore, weather, and forecast gating all
+stay on the web. The token is a stateless snapshot the Roll20 side
+can replay over its `state.PartyBuffCalendar` blob.
+
+### 10.1 Wire format
+
+A token is the base64 encoding (standard alphabet, padding optional)
+of a UTF-8 JSON object with this shape:
+
+```ts
+interface Token {
+  readonly v: 1;                                          // schema version; consumers reject v > supported
+  readonly world: WorldId;                                // see §3
+  readonly date: CalendarDate;                            // see §5.1
+  readonly variant?: string;                              // calendar variant key (e.g. 'standard') — absent = world default
+  readonly palette?: string;                              // month-header palette key — absent = world default
+  readonly lunarAnchors?: Readonly<Record<string, MoonAnchor>>;   // see §5.3
+  readonly planarAnchors?: Readonly<Record<string, number>>;     // see §5.4 (PlanarPositions)
+}
+```
+
+Optional fields absent from the token mean "use the world's default";
+do not interpret absence as "clear the receiver's existing setting."
+
+Producers SHOULD omit fields equal to the world's default rather than
+include them, so tokens stay small (~200–400 chars base64 typical) and
+forward-compatible (a future default change automatically applies to
+old tokens).
+
+### 10.2 Validation rules
+
+A consumer (Roll20 wrapper, or any third party) MUST reject a token
+when:
+
+1. `v` is not an integer or is greater than the consumer's supported
+   schema version. Error: *"this token requires a newer version of
+   the calendar."*
+2. `world` is not a known `WorldId`. Error: *"unknown world '<id>'."*
+3. `world` doesn't match the consumer's currently-configured world.
+   The consumer MAY prompt to switch worlds, but MUST NOT silently
+   overwrite.
+4. `date` is not valid for the declared world (out-of-range
+   `monthIndex`, `day` exceeds `daysInMonth` / `daysInIntercalary`,
+   unknown `intercalaryKey`).
+5. `variant` is non-empty but isn't a known variant for the world.
+6. `palette` is non-empty but isn't a known palette key.
+7. Any `lunarAnchors` key isn't a moon known to the world.
+8. Any `lunarAnchors` entry's date is invalid for the world, or its
+   `phase` is not `'full'` or `'new'`.
+9. Any `planarAnchors` key isn't a plane known to the world. Planes
+   are Eberron-only; non-Eberron tokens with a non-empty
+   `planarAnchors` are invalid.
+10. The decoded payload is not valid JSON or is not a plain object.
+
+Validation failures surface the engine's human-readable error
+message to the GM (via `/w gm` for Roll20).
+
+### 10.3 Application semantics
+
+When applying a validated token to a running calendar state:
+
+1. Overwrite `worldId`, `variant`, `palette`, `lunarAnchors`,
+   `planarAnchors`, `currentDate` with the token's values. For fields
+   absent from the token, fall back to the world's defaults (NOT to
+   the receiver's pre-existing value).
+2. Do **not** touch non-setup state — view preferences, command
+   history, etc.
+3. Surface two GM-whispered confirmations:
+   - *"New configuration loaded. Use `!cal` to begin."*
+   - If the previous `currentDate` differs from the token's `date`:
+     *"The previous date was X. The new date is Y."* — so the GM
+     can `!cal set` the old date back if they want.
+
+### 10.4 Generation semantics
+
+Producers of tokens (the web app's "Copy configuration" affordance)
+read setup fields from the resolved campaign state and emit a token
+containing the current value of each. Producers SHOULD omit any
+field that's at the world's default — that keeps tokens small and
+forward-compatible (a future engine release that adjusts a default
+automatically flows through old tokens).
+
+### 10.5 Forward compatibility
+
+`v` is the only versioning surface. A consumer reading a known `v`
+MAY ignore unknown top-level fields (engines may add metadata in
+patch releases). A consumer reading `v > supported` MUST refuse with
+the error from §10.2.1 and MUST NOT attempt a partial application.
+
+When the engine releases a schema change requiring `v > 1`, both
+this contract and the producer / consumer implementations bump in
+the same release window. Mixed-version pastes fail loud, not silent.
+
 ---
 
-*Status: v0.1.0 contract. §8 resolved with the engine author on 2026-05-26.
-Engine is being built against this surface; expected publish window is the
-following day. Subsequent contract revisions ride in their own PRs.*
+*Status: v0.1.0 baseline with §8.1 revision. Engine implementation
+of the §5.3/§5.4 argument additions, the Long Shadows cycle-shift
+correction, and the §10 token format follows in `partybuff/party-
+buff`. Roll20 wrapper rewrite to consume the new arguments and the
+token follows in this repo. Subsequent contract revisions ride in
+their own PRs.*
