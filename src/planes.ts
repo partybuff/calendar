@@ -5,6 +5,14 @@
 // planar phase information for display only — no GM overrides, no seeded
 // generation, no anchor wizardry, no knowledge tiers. Players and GMs see
 // the same canon-derived state.
+//
+// Phase math is engine-owned as of the PR 2c swap. `getPlanarState`
+// delegates to `@partybuff/calendar-engine/planes.stateOf`, threading
+// `state.imported.planarAnchors` through as `PlanePositions`. The
+// wrapper still owns the `PLANE_DATA` table for display enrichment
+// (note text, season hints, effect summaries, color overlays) — engine
+// `Plane` is leaner.
+import { enginePlanes, getPlanePositions, serialToCalendarDate } from './engine-opts.js';
 import { state_name } from './constants.js';
 import { ensureSettings, getCal, titleCase } from './state.js';
 import { fromSerial, toSerial, todaySerial } from './date-math.js';
@@ -244,45 +252,43 @@ export function _planarYearDays(){
 // 21d) Phase calculation — canon-only
 // ---------------------------------------------------------------------------
 
-function _planeCycleMetrics(plane){
-  var ypd = _planarYearDays();
-  var coterminousDays = plane.coterminousDays || ((plane.coterminousYears || 0) * ypd);
-  var remoteDays      = plane.remoteDays      || ((plane.remoteYears || 0)      * ypd);
-  var orbitDays       = (plane.orbitYears || 1) * ypd;
-  var transitionDays  = (orbitDays - coterminousDays - remoteDays) / 2;
-  if (transitionDays < 1) transitionDays = 1;
-
-  // Phase order: coterminous → neutral → remote → neutral → (repeat)
-  var phases = [
-    { name:'coterminous', dur: coterminousDays },
-    { name:'neutral',     dur: transitionDays },
-    { name:'remote',      dur: remoteDays },
-    { name:'neutral',     dur: transitionDays }
-  ];
-  return {
-    ypd: ypd,
-    coterminousDays: coterminousDays,
-    remoteDays: remoteDays,
-    orbitDays: orbitDays,
-    transitionDays: transitionDays,
-    phases: phases
-  };
-}
-
 // Calculate the current phase of a plane at a given serial day.
 // Returns { plane, phase, daysIntoPhase, daysUntilNextPhase, phaseDuration,
 //          nextPhase, note, sourceLabel } or null if the plane is unknown.
-// opts.ignoreGenerated is accepted but has no effect — no generated events
-// exist in the canon-only surface.
-export function getPlanarState(planeName, serial, opts?){
+// opts.ignoreGenerated is accepted for legacy callers and ignored.
+// Delegates to `@partybuff/calendar-engine/planes.stateOf`, threading
+// `state.imported.planarAnchors` through the engine's `positions`
+// argument. The wrapper-side `PLANE_DATA` table contributes the
+// display-only enrichment (`note`, `sourceLabel`) that the engine
+// doesn't carry.
+export function getPlanarState(planeName, serial, _opts?){
   var plane = _getPlaneData(planeName);
   if (!plane) return null;
+  var key = String(plane.key || (plane.name || '').toLowerCase());
 
-  // Fixed planes (Dal Quor, Xoriat, Kythri)
-  if (plane.type === 'fixed'){
+  try {
+    var date = serialToCalendarDate(serial);
+    var ps = enginePlanes.stateOf(key, date, getPlanePositions());
+    var phaseDur = ps.phaseDuration;
     return {
       plane: plane,
-      phase: plane.fixedPhase || 'remote',
+      phase: ps.phase,
+      phaseIndex: null,
+      daysIntoPhase: phaseDur != null ? ps.daysIntoPhase : null,
+      daysUntilNextPhase: phaseDur != null ? ps.daysUntilNextPhase : null,
+      phaseDuration: phaseDur != null ? phaseDur : null,
+      nextPhase: phaseDur != null ? ps.nextPhase : null,
+      overridden: false,
+      note: plane.note || '',
+      sourceLabel: 'traditional'
+    };
+  } catch (_e){
+    // Engine validation can throw on unknown plane keys (worlds without
+    // planes) or invalid dates. Fall back to a safe inert shape so the
+    // chat UI never crashes mid-render.
+    return {
+      plane: plane,
+      phase: plane.fixedPhase || 'neutral',
       phaseIndex: null,
       daysIntoPhase: null,
       daysUntilNextPhase: null,
@@ -293,107 +299,6 @@ export function getPlanarState(planeName, serial, opts?){
       sourceLabel: 'traditional'
     };
   }
-
-  // Cyclic planes — calculate from canonical anchor
-  var cycle = _planeCycleMetrics(plane);
-  var coterminousDays = cycle.coterminousDays;
-  var remoteDays = cycle.remoteDays;
-  var phases = cycle.phases;
-  var orbitDays = cycle.orbitDays;
-
-  var anchorMi = (plane.anchorMonth != null) ? (plane.anchorMonth - 1) : 0;
-  var anchorDay = (plane.anchorDay != null) ? (plane.anchorDay | 0) : 1;
-  if (anchorDay < 1) anchorDay = 1;
-  var anchorSerial = toSerial(plane.anchorYear || 998, anchorMi, anchorDay);
-
-  // Find which phase the anchor starts in
-  var anchorPhaseIdx = 0;
-  var anchorPhaseName = plane.anchorPhase || 'coterminous';
-  for (var p = 0; p < phases.length; p++){
-    if (phases[p].name === anchorPhaseName){ anchorPhaseIdx = p; break; }
-  }
-
-  // Compute offset from anchor into the cycle
-  var daysSinceAnchor = serial - anchorSerial;
-  var totalCycle = orbitDays;
-  var offset = daysSinceAnchor % totalCycle;
-  if (offset < 0) offset += totalCycle;
-
-  // Walk through phases starting from the anchor phase
-  var accumulated = 0;
-  for (var pi = 0; pi < phases.length; pi++){
-    var idx = (anchorPhaseIdx + pi) % phases.length;
-    var ph  = phases[idx];
-    if (offset < accumulated + ph.dur){
-      var into = offset - accumulated;
-      var nextIdx = (idx + 1) % phases.length;
-      var cyclicPhase = ph.name;
-      var cyclicPhaseIdx = idx;
-      var resolvedDaysInto = Math.floor(into);
-      var resolvedDaysUntilNext = Math.ceil(ph.dur - into);
-      var resolvedPhaseDuration = Math.floor(ph.dur);
-      var resolvedNextPhase = phases[nextIdx].name;
-
-      // Mabar special case: annual coterminous + 5-year remote sub-cycle.
-      // The standard cyclic calc gives us the annual cot; we override
-      // neutral to remote during the rare 5-year summer-solstice window.
-      if (plane.remoteOrbitYears && plane.remoteDaysSpecial){
-        var remoteDur = plane.remoteDaysSpecial;
-        var _solstice = 5 * 28 + 26;
-        var _di = fromSerial(serial);
-        var _yearStart = toSerial(_di.year, 0, 1);
-        var _dayOfYear = serial - _yearStart;
-        var _remoteBaseYear = (plane.anchorYear || 998) + 1;
-        var _remoteYearsSince = _di.year - _remoteBaseYear;
-        var _isRemoteYear = (_remoteYearsSince >= 0 && (_remoteYearsSince % plane.remoteOrbitYears) === 0);
-        var _remoteStart = _solstice - Math.floor(remoteDur / 2);
-        var _remoteEnd   = _remoteStart + remoteDur - 1;
-        if (cyclicPhase !== 'coterminous' && _isRemoteYear &&
-            _dayOfYear >= _remoteStart && _dayOfYear <= _remoteEnd){
-          return {
-            plane: plane,
-            phase: 'remote',
-            phaseIndex: 2,
-            daysIntoPhase: _dayOfYear - _remoteStart,
-            daysUntilNextPhase: _remoteEnd - _dayOfYear + 1,
-            phaseDuration: remoteDur,
-            nextPhase: 'neutral',
-            overridden: false,
-            note: '',
-            sourceLabel: 'traditional'
-          };
-        }
-      }
-
-      return {
-        plane: plane,
-        phase: cyclicPhase,
-        phaseIndex: cyclicPhaseIdx,
-        daysIntoPhase: Math.max(0, resolvedDaysInto),
-        daysUntilNextPhase: Math.max(0, resolvedDaysUntilNext),
-        phaseDuration: Math.max(0, resolvedPhaseDuration),
-        nextPhase: resolvedNextPhase,
-        overridden: false,
-        note: '',
-        sourceLabel: 'traditional'
-      };
-    }
-    accumulated += ph.dur;
-  }
-
-  // Shouldn't reach here, but fallback to a safe value.
-  return {
-    plane: plane,
-    phase: 'neutral',
-    phaseIndex: null,
-    daysIntoPhase: 0,
-    daysUntilNextPhase: 0,
-    phaseDuration: 0,
-    nextPhase: 'neutral',
-    overridden: false,
-    note: '',
-    sourceLabel: 'traditional'
-  };
 }
 
 // ---------------------------------------------------------------------------

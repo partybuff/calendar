@@ -10,7 +10,7 @@ import { _deliverAdditionalCalendarRange, _deliverTopLevelCalendarRange, buildAd
 import { button, clamp, esc, listAllEventsTableHtml, _monthRangeFromSerial, removeListHtml, removeMatchesListHtml, restoreDefaultEvents, suppressedDefaultsListHtml } from './rendering.js';
 import { _displayMonthDayParts, _menuBox, _serialToDateSpec, _shiftSerialByMonth, activeEffectsPanelHtml, addEventSmart, addMonthlySmart, addYearlySmart, calendarSystemListHtml, currentDateLabel, formalCurrentDateLabel, helpCalendarSystemMenu, helpEventColorsMenu, helpRootMenu, helpSeasonsMenu, helpThemesMenu, nextForDayOnly, removeEvent, seasonSetListHtml, sendCurrentDate, setDate, stepDays, taskCardHtml, themeListHtml } from './ui.js';
 import { _normalizePackedWords, _playerTodayHtml, _showDefaultCalView, runEventsShortcut, send, whisper, whisperUi } from './commands.js';
-import { MOON_SYSTEMS, _getMoonSys, _isFullMoonIllum, _isNewMoonIllum, _moonPhaseEmoji, _moonPhaseLabel, handleMoonCommand, invalidateMoonModel, moonEnsureSequences, moonPhaseAt } from './moon.js';
+import { MOON_SYSTEMS, _getMoonSys, _moonPeakPhaseDay, _moonPhaseEmoji, _moonPhaseLabel, handleMoonCommand, invalidateMoonModel, moonEnsureSequences } from './moon.js';
 import { _planarNotableToday, getPlanarState, _getAllPlaneData, handlePlanesCommand } from './planes.js';
 
 
@@ -88,10 +88,9 @@ export function _todayAllHtml(){
       if (moonSys && moonSys.moons){
         var newMoons = [], fullMoons = [];
         moonSys.moons.forEach(function(moon){
-          var ph = moonPhaseAt(moon.name, today);
-          if (!ph) return;
-          if (_isFullMoonIllum(ph.illum)) fullMoons.push(moon.name);
-          else if (_isNewMoonIllum(ph.illum)) newMoons.push(moon.name);
+          var verdict = _moonPeakPhaseDay(moon.name, today);
+          if (verdict === 'full') fullMoons.push(moon.name);
+          else if (verdict === 'new') newMoons.push(moon.name);
         });
         var moonLines = [];
         if (newMoons.length) moonLines.push('\uD83C\uDF11 <b>New:</b> ' + newMoons.map(esc).join(', '));

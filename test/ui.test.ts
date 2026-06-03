@@ -6,7 +6,7 @@ import { setDate, stepDays } from "../src/ui.js";
 import { sendToAll, sendUiToGM } from "../src/messaging.js";
 import { helpRootMenu } from "../src/ui.js";
 import { fromSerial, toSerial } from "../src/date-math.js";
-import { MOON_SYSTEMS, _moonNextThresholdEntry, _moonPeakPhaseDay, _moonPhaseSpan, moonEnsureSequences } from "../src/moon.js";
+import { MOON_SYSTEMS, _moonNextThresholdEntry, _moonPeakPhaseDay, moonEnsureSequences } from "../src/moon.js";
 import { _getAllPlaneData, getPlanarState } from "../src/planes.js";
 
 function setSerial(serial: number) {
@@ -60,29 +60,36 @@ describe("Task-focused UI", () => {
     assert(!msg.msg.includes("Stepped Forward"), "should send the refreshed Today view instead of the old step notice");
   });
 
-  it("shows span-aware moon highlights in the dashboard", () => {
+  it("shows the inflection-day moon highlight in the dashboard without a span suffix", () => {
     freshInstall();
 
+    // Engine model is inflection-only: each full / new lands on exactly
+    // one serial per cycle, so there is no "Day X of Y" span to render.
+    // Scan the first canonical year for any moon's full day and verify
+    // the dashboard string mentions the moon + "Full" / "New" — but
+    // NOT a span suffix.
     const start = toSerial(998, 0, 1);
     const end = start + 336;
-    moonEnsureSequences(start, 400);
 
     let found: any = null;
     for (let serial = start; serial <= end && !found; serial++) {
       for (const moon of MOON_SYSTEMS.eberron.moons as any[]) {
-        const span = _moonPhaseSpan(moon.name, serial);
-        if (span && span.totalDays > 1) {
-          found = { serial, moon: moon.name, type: span.type };
-          break;
-        }
+        const verdict = _moonPeakPhaseDay(moon.name, serial);
+        if (verdict) { found = { serial, moon: moon.name, type: verdict }; break; }
       }
     }
 
-    assert(found, "expected a multi-day moon phase in the first year");
+    assert(found, "expected a full or new inflection day in the first year");
     setSerial(found.serial);
     _showDefaultCalView({ who: "GM (GM)", playerid: "GM" } as any);
     const msg = String((globalThis as any)._chatLog.slice(-1)[0].msg);
-    assert(msg.includes(`${found.moon}</b> is ${found.type === "full" ? "Full" : "New"} (Day `));
+    const phaseWord = found.type === "full" ? "Full" : "New";
+    // Inflection-only model: the moon line is "Foo is Full" without a
+    // span suffix. Planes still use "(Day X of Y)" elsewhere in the
+    // panel — we only check the moon line specifically.
+    const moonLineMatch = msg.match(new RegExp(`${found.moon}</b>[^<]*is ${phaseWord}([^<]*)`));
+    assert(moonLineMatch, `expected "${found.moon} is ${phaseWord}" line in dashboard`);
+    assert(!moonLineMatch[1].includes("Day "), `moon line should have no "Day X of Y" suffix, got: ${moonLineMatch[1]}`);
   });
 
   it("surfaces long-span moon previews and plane day spans in the GM dashboard", () => {
