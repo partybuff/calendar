@@ -1,11 +1,11 @@
 import { describe, it } from "node:test";
-import { ok as assert, strictEqual as assertEquals, notStrictEqual as assertNotEquals } from "node:assert/strict";
+import { ok as assert, strictEqual as assertEquals } from "node:assert/strict";
 import { freshInstall, completeSetup } from "./helpers.js";
 import { getCal } from "../src/state.js";
 import { toSerial } from "../src/date-math.js";
 import { handleInput } from "../src/boot-register.js";
 import { eventKey } from "../src/events.js";
-import { getMoonState, handleMoonCommand } from "../src/moon.js";
+import { handleMoonCommand } from "../src/moon.js";
 import { handlePlanesCommand } from "../src/planes.js";
 
 function gmMessage(content: string) {
@@ -207,23 +207,24 @@ describe("Moon management routing", () => {
     assert(!log.includes("Moon Overview"));
   });
 
-  it("emits the simplified moon management dropdown and reseeds successfully", () => {
+  it("emits the toggle-only moon management dropdown", () => {
     freshInstall();
 
     handleMoonCommand(gmUser(), ["moon"]);
 
     let msg = String(lastChat().msg);
-    assert(msg.includes("moon manage ?{Action|Toggle Moons On/Off,toggle|Reseed Moons,reseed"));
+    // After PR 2c the wrapper only owns the moons-enabled toggle; per-
+    // moon anchors and reseeds (`Set New`, `Set Full`, `Reseed Moons`,
+    // `Set Night of the Eye`) moved to the web app and flow in via
+    // `!cal token`. The dropdown carries Toggle only.
+    assert(msg.includes("moon manage ?{Action|Toggle Moons On/Off,toggle}"));
+    assert(!msg.includes("Reseed Moons,reseed"));
     assert(!msg.includes("Set New,setnew"));
     assert(!msg.includes("Set Full,setfull"));
     assert(!msg.includes("Bind Moon Page,page bind"));
     assert(!msg.includes("Show Moon Page,page show"));
+    assert(!msg.includes("Set Night of the Eye"));
     assert(!msg.includes("moon phases"));
-
-    const beforeSeed = getMoonState().systemSeed;
-    handleMoonCommand(gmUser(), ["moon", "manage", "reseed"]);
-    assert(getMoonState().systemSeed);
-    assertNotEquals(getMoonState().systemSeed, beforeSeed);
   });
 });
 

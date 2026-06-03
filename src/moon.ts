@@ -1,4 +1,6 @@
 // Section 20: Moon System
+import { moons as engineMoons } from '@partybuff/calendar-engine';
+import type { MoonPhase as EngineMoonPhase } from '@partybuff/calendar-engine';
 import { CONTRAST_MIN_HEADER, STYLES, state_name } from './constants.js';
 import { defaults, ensureSettings, getCal, titleCase } from './state.js';
 import { _contrast, applyBg } from './color.js';
@@ -8,6 +10,7 @@ import { _displayMonthDayParts, _legendLine, _menuBox, _serialToDateSpec, _shift
 import { send, whisper, whisperParts } from './commands.js';
 import { _getPlaneData, getPlanarState, getPlanesState } from './planes.js';
 import { getWorld } from './worlds/index.js';
+import { getEngineWorld, getEngineWorldId, getMoonOpts, serialToCalendarDate } from './engine-opts.js';
 
 /* ============================================================================
  * SECTION 20) MOON SYSTEM
@@ -388,74 +391,44 @@ export function _getMoonSys(sysKeyOverride?){
   return MOON_SYSTEMS[key] || null;
 }
 
-function _dragonlanceNightOfTheEyeOverride(){
-  var st = ensureSettings();
-  if (String(st.calendarSystem || '').toLowerCase() !== 'dragonlance') return null;
-  var ms = getMoonState();
-  var override = ms.systemAnchors && ms.systemAnchors.dragonlanceNightOfTheEye;
-  if (!override || !isFinite(override.serial)) return null;
-  var timeFrac = Number(override.timeFrac) || 0;
-  return {
-    referenceSerial: Number(override.serial) + timeFrac,
-    timeFrac: timeFrac,
-    phaseAngleDeg: 180
-  };
-}
-
-function _cyclePosForAngleLegacy(period, phaseAngleDeg){
-  return (_normDeg((phaseAngleDeg == null ? 180 : phaseAngleDeg) - 180) / 360) * period;
-}
-
-function _resolvedMoonFixedAnchor(moon){
-  if (!moon) return null;
-  var dragonlanceOverride = _dragonlanceNightOfTheEyeOverride();
-  if (dragonlanceOverride && /^(Solinari|Lunitari|Nuitari)$/.test(String(moon.name || ''))){
-    return dragonlanceOverride;
-  }
-  var anchor = moon.fixedAnchor || null;
-  if (!anchor || !anchor.referenceDate) return null;
-  return {
-    referenceSerial: toSerial(anchor.referenceDate.year, Math.max(0, (anchor.referenceDate.month || 1) - 1), anchor.referenceDate.day || 1) + (Number(anchor.timeFrac) || 0),
-    timeFrac: Number(anchor.timeFrac) || 0,
-    phaseAngleDeg: Number(anchor.phaseAngleDeg == null ? 180 : anchor.phaseAngleDeg)
-  };
-}
+// Dragonlance Night-of-the-Eye and per-moon fixed-anchor resolution
+// previously lived here. Both are engine-owned as of PR 2c: the engine
+// consumes `state.imported.krynnAnchor` / `state.imported.lunarAnchors`
+// via the `PhaseOptions` bag from `getMoonOpts()`. The wrapper no longer
+// resolves anchors locally.
 
 // ---------------------------------------------------------------------------
 // 20b) State helpers
 // ---------------------------------------------------------------------------
 
+// `state.PartyBuffCalendar.moons` is largely vestigial after PR 2c —
+// the engine carries no per-wrapper state. We keep the slot for
+// compatibility (existing campaigns may still have one persisted) and
+// for the surviving `recentHistory.bySerial` chat-history cache used by
+// ui.ts when stamping moon icons onto the rolling 3-month view. All
+// other fields (`sequences`, `systemSeed`, `systemAnchors`,
+// `gmAnchors`, `generatedFrom`, `generatedThru`, `modelRevision`) are
+// retained as init-safe defaults so old persisted blobs don't crash
+// renders, but nothing writes to them any more.
 export function getMoonState(){
   var root = state[state_name];
   if (!root.moons) root.moons = {
-    sequences: {},     // moonName -> array of { serial, type, retro }
-    systemSeed: null,  // single global seed word for the entire lunar system
-    systemAnchors: {}, // world-specific anchor overrides (e.g. Dragonlance Night of the Eye)
-    gmAnchors: {},     // moonName -> [{ serial, type }]  GM-forced phase events
-    generatedFrom: null,  // serial day from which sequences were generated
-    generatedThru: 0,  // serial day up to which sequences have been generated
+    sequences: {},
+    systemSeed: null,
+    systemAnchors: {},
+    gmAnchors: {},
+    generatedFrom: null,
+    generatedThru: 0,
     modelRevision: 1,
-    recentHistory: {
-      bySerial: {},
-      minSerial: null,
-      maxSerial: null
-    }
+    recentHistory: { bySerial: {}, minSerial: null, maxSerial: null }
   };
   var ms = root.moons;
-  if (!ms.gmAnchors) ms.gmAnchors = {};
-  if (!ms.systemAnchors || typeof ms.systemAnchors !== 'object') ms.systemAnchors = {};
-  if (ms.systemSeed === undefined) ms.systemSeed = null;
-  if (!isFinite(ms.generatedFrom)) ms.generatedFrom = null;
-  ms.modelRevision = parseInt(ms.modelRevision, 10);
-  if (!isFinite(ms.modelRevision) || ms.modelRevision < 1) ms.modelRevision = 1;
   if (!ms.recentHistory || typeof ms.recentHistory !== 'object'){
     ms.recentHistory = { bySerial: {}, minSerial: null, maxSerial: null };
   }
   if (!ms.recentHistory.bySerial || typeof ms.recentHistory.bySerial !== 'object'){
     ms.recentHistory.bySerial = {};
   }
-  ms.recentHistory.minSerial = isFinite(ms.recentHistory.minSerial) ? (ms.recentHistory.minSerial|0) : null;
-  ms.recentHistory.maxSerial = isFinite(ms.recentHistory.maxSerial) ? (ms.recentHistory.maxSerial|0) : null;
   return ms;
 }
 
@@ -512,9 +485,6 @@ function _storeMoonHistorySnapshot(ms, snapshot){
   return snapshot;
 }
 
-function _clearMoonDerivedCaches(){
-}
-
 export function _moonHashStr(str){
   // String -> deterministic float 0..1
   var h = 0x811c9dc5;
@@ -527,611 +497,243 @@ export function _moonHashStr(str){
 
 // Seeded dice roller — deterministic from serial + salt string.
 // Returns 1..sides (inclusive). Recognizably D&D: d4, d6, d8, d10, d12, d20, d100.
-export function _dN(serial, salt, sides){
-  var h = 0x811c9dc5;
-  var str = String(serial) + ':' + salt;
-  for (var i = 0; i < str.length; i++){
-    h ^= str.charCodeAt(i);
-    h = (Math.imul(h, 0x01000193)) >>> 0;
-  }
-  return 1 + (h % sides);
-}
 
 // ---------------------------------------------------------------------------
-// 20b-ii) Festival soft anchors — decouple events from specific moons
-// ---------------------------------------------------------------------------
-// Each festival has a target date and phase. If any moon naturally has a
-// matching event within 1 day of that date, a d6 is rolled — on 6, the
-// event shifts to land exactly on the festival day's noon. If nothing is within
-// 1 day, nothing happens. No moon is favored over another.
-
-export var FESTIVAL_SOFT_ANCHORS = [
-  { event:'Crystalfall',       type:'full', month:2,  day:9,  salt:'crystalfall' },
-  { event:"Sun's Blessing",    type:'full', month:3,  day:15, salt:'suns_blessing' },
-  { event:"Onatar's Flame",    type:'full', month:1,  day:7,  salt:'onatars_flame' },
-  { event:"Bounty's Blessing", type:'full', month:7,  day:14, salt:'bountys_blessing' },
-  { event:'Brightblade',       type:'full', month:6,  day:12, salt:'brightblade' },
-  { event:'The Hunt',          type:'full', month:8,  day:4,  salt:'the_hunt' },
-  { event:"Aureon's Crown",    type:'full', month:5,  day:26, salt:'aureons_crown' },
-  { event:"Boldrei's Feast",   type:'full', month:9,  day:9,  salt:'boldreis_feast' },
-  { event:'Thronehold',        type:'full', month:11, day:11, salt:'thronehold' }
-];
-
-// ---------------------------------------------------------------------------
-// 20c) Year / serial helpers
+// 20c) Constants surfaced to other modules
 // ---------------------------------------------------------------------------
 
+// `MOON_PREDICTION_LIMITS.highMaxDays` bounds the engine's `nextEvent`
+// horizon scan; the wrapper used to pre-generate two years of phases at
+// init, but the engine computes phases closed-form, so this is now
+// purely a forecast-lookahead cap. `MOON_HISTORY_DAYS` is the chat-
+// history window length used by ui.ts when stamping moon icons onto
+// the rolling 3-month view. `MOON_PRE_GENERATE_YEARS` is kept as a
+// no-op compatibility export — no pre-generation happens any more.
 export var MOON_PRE_GENERATE_YEARS = 2;
 export var MOON_PREDICTION_LIMITS = {
-  // Low: only surface phases obvious in the immediate sky.
   lowDays: 2,
-  // Medium: exact within the chosen horizon. Max reach = 10 months.
   mediumMaxDays: 280,
-  // High: full knowledge. Max reach = 2 years (pre-generation window).
   highMaxDays: 672
 };
-
 export var MOON_HISTORY_DAYS = 60;
-
-export function _moonYearDays(){
-  return getCal().months.reduce(function(s, m){ return s + (m.days|0); }, 0);
-}
-
-// ---------------------------------------------------------------------------
-// 20d) Phase helper serials
-// ---------------------------------------------------------------------------
-
-export function _serialDayMidpoint(serial){
-  return Math.floor(serial) + 0.5;
-}
-
-export function _edgeDayMidpointSerial(startSerial, endSerial, referenceSerial){
-  var startMid = _serialDayMidpoint(startSerial);
-  var endMid   = _serialDayMidpoint(endSerial);
-  return (Math.abs(referenceSerial - startMid) <= Math.abs(referenceSerial - endMid))
-    ? startMid
-    : endMid;
-}
-
-export function _phaseWindowDistance(serial, windowStart, windowEndExclusive){
-  if (serial < windowStart) return windowStart - serial;
-  if (serial >= windowEndExclusive) return serial - windowEndExclusive;
-  return 0;
-}
-
-export function _isFullMoonIllum(illum){
-  return illum >= MOON_FULL_THRESHOLD;
-}
-
-export function _isNewMoonIllum(illum){
-  return illum <= MOON_NEW_THRESHOLD;
-}
-
-// ---------------------------------------------------------------------------
-// 20d-ii) Festival soft nudge application
-// ---------------------------------------------------------------------------
-// For each festival, checks if ANY moon naturally has its target event within
-// 1 day of the festival's noon target. If so, rolls d6 — only on 6, shifts
-// that moon's event to land exactly at midday. Simple, clean, no overreach.
-
-export function _applyFestivalNudges(moons, ms, genFrom, genThru){
-  var calStart = fromSerial(genFrom);
-  var calEnd   = fromSerial(genThru);
-  for (var yr = calStart.year; yr <= calEnd.year; yr++){
-    for (var fi = 0; fi < FESTIVAL_SOFT_ANCHORS.length; fi++){
-      var fest = FESTIVAL_SOFT_ANCHORS[fi];
-      var festSerial = toSerial(yr, (fest.month|0) - 1, fest.day|0);
-      var festTarget = _serialDayMidpoint(festSerial);
-      if (festSerial < genFrom || festSerial > genThru) continue;
-
-      // Roll d6: nudge only on 6 (16.7%)
-      if (_dN(festSerial, fest.salt + '_nudge', 6) !== 6) continue;
-
-      // Find any moon with a natural event within 1 day of the festival
-      var bestMoon = null, bestIdx = -1, bestDist = Infinity;
-      for (var mi = 0; mi < moons.length; mi++){
-        var seq = ms.sequences[moons[mi].name];
-        if (!seq) continue;
-        for (var si = 0; si < seq.length; si++){
-          if (seq[si].type !== fest.type) continue;
-          if (seq[si].gmForced) continue;
-          var dist = Math.abs(seq[si].serial - festTarget);
-          if (dist <= 1 && dist < bestDist){
-            bestDist = dist;
-            bestMoon = moons[mi].name;
-            bestIdx = si;
-          }
-        }
-      }
-
-      // Smooth to exact festival noon over prior cycles
-      if (bestMoon && bestIdx >= 0){
-        var bestSeq = ms.sequences[bestMoon];
-        _smoothToTarget(bestSeq, bestIdx, festTarget, 7);
-        bestSeq[bestIdx].festivalNudge = fest.event;
-        bestSeq.sort(function(a, b){ return a.serial - b.serial; });
-      }
-    }
-  }
-}
-
-// ---------------------------------------------------------------------------
-// 20d-iii) Weak anti-phase coupling
-// ---------------------------------------------------------------------------
-// Soft statistical nudge between two moons: move moonB slightly toward a
-// preferred opposite-phase angle with moonA. For the Therendor/Barrakas
-// pairing, the lore-significant angle is "Therendor full while Barrakas is
-// new". We model that as a weak restoring pull on Barrakas's cycle toward the
-// nearest Therendor full, capped so it stays a tendency rather than a lock.
-
-export var MOON_ANTI_PHASE_COUPLING_GAIN = 0.2;
-export var MOON_ANTI_PHASE_COUPLING_MAX_SHIFT_DAYS = 1.0;
-
-function _nearestPhaseEvent(seq, type, targetSerial){
-  var best = null;
-  var bestDist = Infinity;
-  for (var i = 0; i < seq.length; i++){
-    if (seq[i].type !== type) continue;
-    var dist = Math.abs(seq[i].serial - targetSerial);
-    if (dist < bestDist){
-      best = seq[i];
-      bestDist = dist;
-    }
-  }
-  return best;
-}
-
-export function _applyAntiPhaseCoupling(ms, moonAName, moonBName, genFrom, genThru){
-  var seqA = ms.sequences[moonAName];
-  var seqB = ms.sequences[moonBName];
-  if (!seqA || !seqB) return;
-
-  for (var bi = 0; bi < seqB.length; bi++){
-    var fullB = seqB[bi];
-    if (fullB.type !== 'full') continue;
-
-    var newIdx = null;
-    for (var ni = bi + 1; ni < seqB.length; ni++){
-      if (seqB[ni].type === 'new'){
-        newIdx = ni;
-        break;
-      }
-    }
-    if (newIdx === null) continue;
-
-    var newB = seqB[newIdx];
-    if (fullB.gmForced || fullB.festivalNudge || newB.gmForced || newB.festivalNudge) continue;
-    if ((fullB.serial < genFrom && newB.serial < genFrom) || (fullB.serial > genThru && newB.serial > genThru)) continue;
-
-    var nearFullA = _nearestPhaseEvent(seqA, 'full', newB.serial);
-    if (nearFullA){
-      var phaseError = nearFullA.serial - newB.serial;
-      var shift = phaseError * MOON_ANTI_PHASE_COUPLING_GAIN;
-      if (shift > MOON_ANTI_PHASE_COUPLING_MAX_SHIFT_DAYS) shift = MOON_ANTI_PHASE_COUPLING_MAX_SHIFT_DAYS;
-      if (shift < -MOON_ANTI_PHASE_COUPLING_MAX_SHIFT_DAYS) shift = -MOON_ANTI_PHASE_COUPLING_MAX_SHIFT_DAYS;
-      if (Math.abs(shift) < 0.05) continue;
-
-      // Shift the whole Barrakas cycle together so event labels and the
-      // illumination curve keep telling the same phase story.
-      fullB.serial += shift;
-      newB.serial += shift;
-      fullB.antiPhaseCoupled = true;
-      newB.antiPhaseCoupled = true;
-      bi = newIdx;
-    }
-  }
-
-  seqB.sort(function(a, b){ return a.serial - b.serial; });
-}
-
-export function _collectPlanarPhaseWindows(planeName, phaseName, genFrom, genThru){
-  var windows = [];
-  var runStart = null;
-  var scanFrom = Math.floor(genFrom);
-  var scanThru = Math.ceil(genThru) + 1;
-
-  for (var serial = scanFrom; serial <= scanThru; serial++){
-    var state = getPlanarState(planeName, serial, { ignoreGenerated: true });
-    var active = !!(state && state.phase === phaseName);
-    if (active && runStart === null){
-      runStart = serial;
-    } else if (!active && runStart !== null){
-      windows.push({ startSerial: runStart, endSerial: serial - 1 });
-      runStart = null;
-    }
-  }
-
-  if (runStart !== null){
-    windows.push({ startSerial: runStart, endSerial: scanThru - 1 });
-  }
-  return windows;
-}
-
-function _windowHasExactPhase(seq, type, windowStart, windowEndExclusive){
-  for (var i = 0; i < seq.length; i++){
-    if (seq[i].type !== type) continue;
-    if (seq[i].serial >= windowStart && seq[i].serial < windowEndExclusive) return true;
-  }
-  return false;
-}
-
-function _nearestMutablePhaseForWindow(seq, type, windowStart, windowEndExclusive){
-  var bestIdx = null;
-  var bestDist = Infinity;
-  for (var i = 0; i < seq.length; i++){
-    if (seq[i].type !== type) continue;
-    if (seq[i].gmForced) continue;
-    var dist = _phaseWindowDistance(seq[i].serial, windowStart, windowEndExclusive);
-    if (dist < bestDist){
-      bestIdx = i;
-      bestDist = dist;
-    }
-  }
-  return bestIdx;
-}
-
-export function _applyAssociatedPlanePhaseShifts(moons, ms, genFrom, genThru){
-  var pulls = [
-    { type:'full', phase:'coterminous' },
-    { type:'new',  phase:'remote' }
-  ];
-
-  for (var mi = 0; mi < moons.length; mi++){
-    var moon = moons[mi];
-    if (!moon || !moon.plane) continue;
-    var seq = ms.sequences[moon.name];
-    if (!seq || !seq.length) continue;
-
-    for (var pi = 0; pi < pulls.length; pi++){
-      var pull = pulls[pi];
-      var windows = _collectPlanarPhaseWindows(moon.plane, pull.phase, genFrom, genThru);
-      for (var wi = 0; wi < windows.length; wi++){
-        var window = windows[wi];
-        var windowStart = window.startSerial;
-        var windowEndExclusive = window.endSerial + 1;
-        if (_windowHasExactPhase(seq, pull.type, windowStart, windowEndExclusive)) continue;
-
-        var nearestIdx = _nearestMutablePhaseForWindow(seq, pull.type, windowStart, windowEndExclusive);
-        if (nearestIdx === null) continue;
-
-        var targetSerial = _edgeDayMidpointSerial(window.startSerial, window.endSerial, seq[nearestIdx].serial);
-        _smoothToTarget(seq, nearestIdx, targetSerial, 7);
-        seq[nearestIdx].planarPhaseShift = moon.plane + ':' + pull.phase;
-      }
-    }
-
-    seq.sort(function(a, b){ return a.serial - b.serial; });
-  }
-}
-
-// ---------------------------------------------------------------------------
-// 20e) Standard sequence generation (all moons except Lharvion)
-// ---------------------------------------------------------------------------
-
-export function _generateStandardSequence(moon, startSerial, endSerial, seedOverride){
-  var period = moon.synodicPeriod;
-  if (!period || !isFinite(period) || period <= 0) return [];
-  var events = [];
-
-  // Determine epoch: serial of a known full moon to start counting from.
-  // All moons now use epochSeed for their starting point.
-  var epochSerial;
-  var fixedAnchor = _resolvedMoonFixedAnchor(moon);
-  if (fixedAnchor){
-    epochSerial = fixedAnchor.referenceSerial - _cyclePosForAngleLegacy(period, fixedAnchor.phaseAngleDeg);
-  } else if (moon.epochSeed){
-    var seedWord  = seedOverride || (moon.epochSeed.defaultSeed) || 'storm';
-    var refD      = moon.epochSeed.referenceDate;
-    var refSerial = toSerial(refD.year, refD.month - 1, refD.day);
-    epochSerial   = refSerial - _moonHashStr(seedWord) * period;
-  } else {
-    // Fallback: use start of generation window
-    epochSerial = startSerial;
-  }
-
-  // Rewind epochSerial backward to just before startSerial.
-  var cur = epochSerial;
-
-  if (cur > startSerial){
-    var approxCyclesBack = Math.ceil((cur - startSerial) / period) + 2;
-    cur -= approxCyclesBack * period;
-  }
-
-  var MAX_REWIND = 2000;
-  while (cur + period < startSerial - period && MAX_REWIND-- > 0){
-    cur += period;
-  }
-
-  var MAX_FWD = 800;
-  while (cur <= endSerial && MAX_FWD-- > 0){
-    var fullS = cur;
-    var newS  = cur + period * 0.5;
-    if (fullS >= startSerial && fullS <= endSerial)
-      events.push({ serial:fullS, type:'full', retro:false });
-    if (newS  >= startSerial && newS  <= endSerial)
-      events.push({ serial:newS,  type:'new',  retro:false });
-    cur += period;
-  }
-
-  return events;
-}
-
-// ---------------------------------------------------------------------------
-// ---------------------------------------------------------------------------
-// 20g-iii) Multi-cycle smoothing for forced moon events
-// ---------------------------------------------------------------------------
-// When a moon event needs to land on a specific serial (GM anchor, Long
-// Shadows, festival nudge), we don't teleport it — we redistribute the
-// offset across the preceding N events of the same type so the moon
-// appears to drift naturally toward the target date.
-//
-// Algorithm: given the target event at index targetIdx in the sequence,
-// and the desired serial targetSerial, compute the total offset
-// (targetSerial - seq[targetIdx].serial). Distribute this across the
-// prior smoothingCycles events using triangular weighting: the cycle
-// closest to the target absorbs the most, the one furthest absorbs the
-// least. Each event shifts by weight_i / sum(weights) * totalOffset.
-// The target event itself lands exactly on targetSerial.
-
-export function _smoothToTarget(seq, targetIdx, targetSerial, smoothingCycles){
-  smoothingCycles = Math.max(1, smoothingCycles|0) || 7;
-  var totalOffset = targetSerial - seq[targetIdx].serial;
-  if (Math.abs(totalOffset) < 0.5){
-    // Already close enough — just set it exactly
-    seq[targetIdx].serial = targetSerial;
-    return;
-  }
-
-  var targetType = seq[targetIdx].type;
-
-  // Collect prior events of the same type
-  var priorIndices = [];
-  for (var i = targetIdx - 1; i >= 0 && priorIndices.length < smoothingCycles; i--){
-    if (seq[i].type === targetType && !seq[i].gmForced) priorIndices.push(i);
-  }
-
-  // Build triangular weights: closest to target = highest weight
-  // priorIndices[0] is the one just before target (gets most weight)
-  var weights = [];
-  var sumW = 0;
-  for (var w = 0; w < priorIndices.length; w++){
-    var weight = priorIndices.length - w; // N, N-1, ..., 1
-    weights.push(weight);
-    sumW += weight;
-  }
-  // The target itself also gets weight (N+1) — but we force it exactly,
-  // so we only use the weights for the priors.
-  // Total offset distributed: prior events get fraction of the shift,
-  // the remainder goes to the target.
-  var priorShare = sumW / (sumW + priorIndices.length + 1);
-  var priorOffset = totalOffset * priorShare;
-
-  // Apply shifts to prior events
-  for (var p = 0; p < priorIndices.length; p++){
-    var shift = Math.round(priorOffset * weights[p] / sumW);
-    seq[priorIndices[p]].serial += shift;
-  }
-
-  // Set target exactly
-  seq[targetIdx].serial = targetSerial;
-  seq[targetIdx].type = targetType;
-  seq[targetIdx].retro = false;
-}
 
 // ---------------------------------------------------------------------------
 // 20g) Ensure sequences are generated / up to date
 // ---------------------------------------------------------------------------
 
-export function moonEnsureSequences(focusSerial?, horizonExtraDays?){
-  var st = ensureSettings();
-  if (st.moonsEnabled === false) return;
-
-  var ms         = getMoonState();
-  var cal        = getCal();
-  var cur        = cal.current;
-  var todayS     = toSerial(cur.year, cur.month, cur.day_of_the_month);
-  var focusS     = isFinite(focusSerial) ? (focusSerial|0) : todayS;
-  var extraDays  = isFinite(horizonExtraDays) ? Math.max(0, horizonExtraDays|0) : 0;
-  var yearDays   = _moonYearDays();
-  var needThru   = Math.max(todayS, focusS) + Math.max(MOON_PRE_GENERATE_YEARS * yearDays, extraDays);
-  var wantFrom   = Math.min(todayS, focusS) - yearDays;
-
-  var priorFrom = (isFinite(ms.generatedFrom) && ms.generatedFrom > 0) ? ms.generatedFrom : null;
-  if (priorFrom != null && ms.generatedThru >= needThru && priorFrom <= wantFrom) return;
-
-  var sys = _getMoonSys();
-  if (!sys) return;
-
-  var genFrom = (priorFrom != null) ? Math.min(priorFrom, wantFrom) : wantFrom;
-  var globalSeed = (ms.systemSeed != null && String(ms.systemSeed).trim() !== '')
-    ? String(ms.systemSeed).trim()
-    : null;
-  sys.moons.forEach(function(moon){
-    var seed = globalSeed ? (globalSeed + '::' + moon.name) : null;
-    var seq = _generateStandardSequence(moon, genFrom, needThru, seed);
-
-    // Apply GM anchor overrides with multi-cycle smoothing so the exact peak
-    // lands on the anchor while the lead-in cycles bend toward it.
-    var gmList = ms.gmAnchors[moon.name] || [];
-    gmList.forEach(function(anchor){
-      if (anchor.serial < genFrom || anchor.serial > needThru) return;
-      var halfWindow = (moon.synodicPeriod || 28) / 2;
-      var nearest = null, nearestDist = Infinity;
-      for (var k = 0; k < seq.length; k++){
-        if (seq[k].type !== anchor.type) continue;
-        var dist = Math.abs(seq[k].serial - anchor.serial);
-        if (dist < nearestDist){ nearestDist = dist; nearest = k; }
-      }
-      if (nearest !== null && nearestDist <= halfWindow){
-        _smoothToTarget(seq, nearest, anchor.serial, 7);
-        seq[nearest].gmForced = true;
-      } else {
-        seq.push({ serial: anchor.serial, type: anchor.type, retro: false, gmForced: true });
-      }
-    });
-
-    // Keep sequence sorted by serial
-    seq.sort(function(a, b){ return a.serial - b.serial; });
-    ms.sequences[moon.name] = seq;
-  });
-
-  // --- Festival soft nudges (applied across all moons post-generation) ---
-  // Festival soft nudges: if any moon has a full/new within 1 day of a
-  // published festival noon, d6=6 shifts it to that midday anchor.
-  _applyFestivalNudges(sys.moons, ms, genFrom, needThru);
-
-  // --- Therendor–Barrakas weak anti-phase coupling ---
-  // Weak restoring pull toward the lore-significant angle:
-  // Therendor full more often coincides with Barrakas new.
-  _applyAntiPhaseCoupling(ms, 'Therendor', 'Barrakas', genFrom, needThru);
-
-  // --- Associated plane phase pulls ---
-  // If a moon's associated plane has a canonical coterminous/remote window
-  // with no exact full/new peak inside it, pull the nearest exact peak onto
-  // the closest edge-day noon of that window.
-  _applyAssociatedPlanePhaseShifts(sys.moons, ms, genFrom, needThru);
-
-  ms.generatedFrom = genFrom;
-  ms.generatedThru = needThru;
+// No-op shim. The legacy wrapper pre-generated a multi-year buffer of
+// full/new inflection points per moon and ran festival nudges /
+// anti-phase coupling / planar pulls across it; all of that math now
+// lives in `@partybuff/calendar-engine` and is computed closed-form
+// per phaseOf() call. Callers can keep invoking moonEnsureSequences()
+// freely — it's free.
+//
+// Kept exported because ui.ts / today.ts / commands.ts still call it
+// before render to mirror the old "warm the cache" pattern. Removing
+// those call sites is a follow-up cleanup; until then this empty body
+// satisfies the contract.
+export function moonEnsureSequences(_focusSerial?, _horizonExtraDays?){
+  return;
 }
 
 // ---------------------------------------------------------------------------
 // 20h) Phase interpolation & display helpers
 // ---------------------------------------------------------------------------
 
-export function _moonPhaseAtRaw(moonName, serial){
-  var seq = (getMoonState().sequences[moonName]) || [];
-  if (!seq.length) return { illum:0.5, waxing:true };
-
-  var prev = null, next = null;
-  for (var i = 0; i < seq.length; i++){
-    if (seq[i].type !== 'full') continue;
-    if (seq[i].serial <= serial) prev = seq[i];
-    else if (!next)              next = seq[i];
+// Resolve a wrapper moon name (e.g. "Olarune") to the engine's lowercase
+// moon key (e.g. "olarune"). The engine's `worlds.get(id).moons` array
+// is the canonical key→name mapping; we cache one lookup per (world,
+// name) pair so the rendering hot path stays cheap.
+var _moonKeyByNameCache: { [world: string]: { [name: string]: string } } = {};
+function _moonKeyForName(moonName: string): string | null {
+  try {
+    var world = getEngineWorld();
+    var byName = _moonKeyByNameCache[world.id];
+    if (!byName){
+      byName = Object.create(null);
+      for (var i = 0; i < world.moons.length; i++){
+        byName[world.moons[i].name] = world.moons[i].key;
+      }
+      _moonKeyByNameCache[world.id] = byName;
+    }
+    return byName[moonName] || null;
+  } catch (_e){
+    return null;
   }
-
-  if (!prev && !next) return { illum:0.5, waxing:true };
-  if (!prev) return { illum:0.0, waxing:true  };
-  if (!next) return { illum:0.5, waxing:false };
-
-  var span  = next.serial - prev.serial;
-  var pos   = (serial - prev.serial) / span;
-  var illum = 0.5 + 0.5 * Math.cos(pos * 2 * Math.PI);
-  var waxing = pos > 0.5;
-  return { illum: illum, waxing: waxing };
 }
 
-// Public moonPhaseAt — illumination + waxing from the smoothed sequence.
+// Internal alias kept so external imports of `_moonPhaseAtRaw` (init.ts
+// REPL surface, legacy callers) still resolve to the new shim.
+export function _moonPhaseAtRaw(moonName, serial){
+  return moonPhaseAt(moonName, serial);
+}
+
+// Public moonPhaseAt — delegate to the engine.
+// Returns the legacy `{illum, waxing}` shape augmented with the engine's
+// canonical `label` and inflection flags. Callers that already used
+// `_moonPhaseLabel(ph.illum, ph.waxing)` keep working; callers that
+// want the engine's verdict directly can read `ph.label` / `ph.isFull`.
 export function moonPhaseAt(moonName, serial): any {
-  return _moonPhaseAtRaw(moonName, serial);
+  var key = _moonKeyForName(moonName);
+  if (!key) return { illum:0.5, waxing:true, label:'New', isFull:false, isNew:false };
+  try {
+    var worldId = getEngineWorldId();
+    var date = serialToCalendarDate(serial);
+    var phase: EngineMoonPhase = engineMoons.phaseOf(worldId, key, date, getMoonOpts());
+    return {
+      illum: phase.illumination,
+      waxing: phase.waxing,
+      label: phase.label,
+      isFull: phase.isFull,
+      isNew: phase.isNew,
+    };
+  } catch (_e){
+    return { illum:0.5, waxing:true, label:'New', isFull:false, isNew:false };
+  }
 }
 
-// Check if this serial is the peak day for a full or new event.
-// Returns 'full', 'new', or null. Uses the sequence events directly,
-// rounding fractional serials to the nearest integer day. This ensures
-// exactly one "full" and one "new" report per synodic cycle.
-// Returns 'full', 'new', or null for a given moon on a given day.
-// Uses illumination thresholds so moons with
-// longer synodic periods can be full or new for multiple consecutive days.
+// Returns the engine's inflection-day verdict for this moon on this serial.
+// Returns 'full', 'new', or null. Single-day inflections: no multi-day
+// spans regardless of cycle length.
 export function _moonPeakPhaseDay(moonName, serial){
-  var ph = _moonPhaseAtRaw(moonName, serial);
-  if (!ph) return null;
-  if (_isFullMoonIllum(ph.illum)) return 'full';
-  if (_isNewMoonIllum(ph.illum))  return 'new';
+  var key = _moonKeyForName(moonName);
+  if (!key) return null;
+  try {
+    var worldId = getEngineWorldId();
+    var date = serialToCalendarDate(serial);
+    var phase = engineMoons.phaseOf(worldId, key, date, getMoonOpts());
+    if (phase.isFull) return 'full';
+    if (phase.isNew) return 'new';
+    return null;
+  } catch (_e){
+    return null;
+  }
+}
+
+// Engine model is inflection-only — every full/new is a single day, so
+// "Day X of Y" suffixes don't apply. Kept exported so callers that still
+// reference these get a stable no-op return shape during the migration.
+export function _moonPhaseSpan(_moonName, _serial){
   return null;
 }
 
-// For multi-day full/new phases, compute "Day X of Y" within the contiguous run.
-// Returns { dayNum, totalDays } or null if this serial isn't a peak day.
-export function _moonPhaseSpan(moonName, serial){
-  var type = _moonPeakPhaseDay(moonName, serial);
-  if (!type) return null;
-  var checker = type === 'full' ? _isFullMoonIllum : _isNewMoonIllum;
-  // Scan backward to find start (max 60 days safety)
-  var start = serial;
-  for (var b = 0; b < 60; b++){
-    var ph = _moonPhaseAtRaw(moonName, start - 1);
-    if (ph && checker(ph.illum)) start--; else break;
-  }
-  // Scan forward to find end (max 60 days safety)
-  var end = serial;
-  for (var f = 0; f < 60; f++){
-    var ph2 = _moonPhaseAtRaw(moonName, end + 1);
-    if (ph2 && checker(ph2.illum)) end++; else break;
-  }
-  var totalDays = end - start + 1;
-  var dayNum = serial - start + 1;
-  return { dayNum: dayNum, totalDays: totalDays, type: type };
+export function _moonPhaseSpanSuffix(_moonName, _serial){
+  return '';
 }
 
-export function _moonPhaseSpanSuffix(moonName, serial){
-  var span = _moonPhaseSpan(moonName, serial);
-  if (!span || span.totalDays <= 1) return '';
-  return ' (Day ' + span.dayNum + ' of ' + span.totalDays + ')';
-}
-
+// Look ahead from `serial` for the next inflection day of either type
+// in the next `maxDays` days. Returns `{ type:'full'|'new', days:N }`
+// for the nearer of the two, or null.
 export function _moonNextThresholdEntry(moonName, serial, maxDays){
   maxDays = Math.max(0, maxDays|0);
-  for (var d = 1; d <= maxDays; d++){
-    var prev = moonPhaseAt(moonName, serial + d - 1);
-    var next = moonPhaseAt(moonName, serial + d);
-    if (!next) continue;
-    if (_isFullMoonIllum(next.illum) && (!prev || !_isFullMoonIllum(prev.illum))){
-      return { type:'full', days:d };
-    }
-    if (_isNewMoonIllum(next.illum) && (!prev || !_isNewMoonIllum(prev.illum))){
-      return { type:'new', days:d };
+  if (maxDays <= 0) return null;
+  var key = _moonKeyForName(moonName);
+  if (!key) return null;
+  try {
+    var worldId = getEngineWorldId();
+    var fromDate = serialToCalendarDate(serial);
+    var opts = getMoonOpts();
+    var nextFull = engineMoons.nextEvent(worldId, key, fromDate, 'full', maxDays, opts);
+    var nextNew  = engineMoons.nextEvent(worldId, key, fromDate, 'new',  maxDays, opts);
+    var fullSer = nextFull ? toSerial(nextFull.year, _calendarDateMonthIndex(nextFull), 'day' in nextFull ? nextFull.day : 1) : null;
+    var newSer  = nextNew  ? toSerial(nextNew.year,  _calendarDateMonthIndex(nextNew),  'day' in nextNew  ? nextNew.day  : 1) : null;
+    var picked: { type: string; ser: number } | null = null;
+    if (fullSer != null) picked = { type: 'full', ser: fullSer };
+    if (newSer != null && (picked == null || newSer < picked.ser)) picked = { type: 'new', ser: newSer };
+    if (!picked) return null;
+    var d = picked.ser - serial;
+    if (d <= 0) return null;
+    return { type: picked.type, days: d };
+  } catch (_e){
+    return null;
+  }
+}
+
+// Engine CalendarDate → wrapper structural-mi. Used inside
+// _moonNextThresholdEntry / _moonNextEvent so we can return a wrapper
+// serial. Reverse of `serialToCalendarDate`.
+function _calendarDateMonthIndex(date: any): number {
+  // Find the structural slot whose translation matches this engine date.
+  var sysKey = String(ensureSettings().calendarSystem || 'eberron');
+  var arr = getCal().months;
+  for (var i = 0; i < arr.length; i++){
+    var m = arr[i] as any;
+    if (date.kind === 'month'){
+      if (!m.isIntercalary && m.engineMonthIndex === date.monthIndex) return i;
+    } else {
+      if (m.isIntercalary && m.intercalaryKey === date.intercalaryKey) return i;
     }
   }
+  // Fallback: structural slot lookup via the world overlay (older calendar
+  // blobs may not have engineMonthIndex inlined on each month slot).
+  var slot = _structuralSlotIndex(sysKey, date);
+  return slot != null ? slot : 0;
+}
+
+function _structuralSlotIndex(sysKey: string, date: any): number | null {
+  var months = getCal().months;
+  // Best-effort name-based match for legacy state blobs.
+  if (date.kind === 'month'){
+    for (var i = 0; i < months.length; i++){
+      var m = months[i] as any;
+      if (m.isIntercalary) continue;
+      if (m.regularIndex === date.monthIndex) return i;
+    }
+  } else {
+    for (var j = 0; j < months.length; j++){
+      var m2 = months[j] as any;
+      if (!m2.isIntercalary) continue;
+      if ((m2.key || '').toLowerCase() === String(date.intercalaryKey).toLowerCase()) return j;
+    }
+  }
+  void sysKey;
   return null;
 }
 
-export var MOON_TARGET_FULL_DAYS_PER_28 = 19;
-
-export function _phaseThresholdForCoverage(targetDays, monthDays, moonCount){
-  var desiredCoverage = targetDays / monthDays;
-  var perMoonCoverage = 1 - Math.pow(1 - desiredCoverage, 1 / moonCount);
-  return 0.5 * (1 + Math.cos(perMoonCoverage * Math.PI));
-}
-
-export var MOON_FULL_THRESHOLD = _phaseThresholdForCoverage(MOON_TARGET_FULL_DAYS_PER_28, 28, 12);
-export var MOON_NEW_THRESHOLD = 1 - MOON_FULL_THRESHOLD;
+// Tight inflection bands. The engine's `isFull` / `isNew` verdicts land
+// on exactly one serial per cycle (peak illumination). These thresholds
+// only matter to label / emoji helpers that receive a bare
+// `(illum, waxing)` pair without the engine's verdict; we render "Full" /
+// "New" close enough to peak that the visual aligns with `phase.isFull`.
+// Callers that already have an engine `MoonPhase` should read
+// `phase.label` instead --- see `moonPhaseAt` above. The legacy
+// `MOON_TARGET_FULL_DAYS_PER_28` / `_phaseThresholdForCoverage` coverage
+// model is retired: the engine doesn't use illum thresholds, so we
+// can't tune the wrapper's label to a "target days per month" either.
+export var MOON_FULL_THRESHOLD = 0.98;
+export var MOON_NEW_THRESHOLD = 0.02;
 
 export function _moonPhaseLabel(illum, waxing){
-  if (_isFullMoonIllum(illum)) return 'Full';
+  if (illum >= MOON_FULL_THRESHOLD) return 'Full';
   if (illum >= 0.55) return (waxing ? 'Waxing' : 'Waning') + ' Gibbous';
   if (illum >= 0.45) return (waxing ? 'First' : 'Last')    + ' Quarter';
-  if (!_isNewMoonIllum(illum)) return (waxing ? 'Waxing' : 'Waning') + ' Crescent';
+  if (illum >  MOON_NEW_THRESHOLD)  return (waxing ? 'Waxing' : 'Waning') + ' Crescent';
   return 'New';
 }
 
 export function _moonPhaseEmoji(illum, waxing){
-  if (_isFullMoonIllum(illum)) return '\uD83C\uDF15';   // 🌕 Full
+  if (illum >= MOON_FULL_THRESHOLD) return '\uD83C\uDF15';   // 🌕 Full
   if (illum >= 0.55) return waxing ? '\uD83C\uDF14' : '\uD83C\uDF16';  // 🌔 🌖 Gibbous
   if (illum >= 0.45) return waxing ? '\uD83C\uDF13' : '\uD83C\uDF17';  // 🌓 🌗 Quarter
-  if (!_isNewMoonIllum(illum)) return waxing ? '\uD83C\uDF12' : '\uD83C\uDF18';  // 🌒 🌘 Crescent
+  if (illum >  MOON_NEW_THRESHOLD)  return waxing ? '\uD83C\uDF12' : '\uD83C\uDF18';  // 🌒 🌘 Crescent
   return '\uD83C\uDF11';  // 🌑 New
 }
 
 export function _moonNextEvent(moonName, serial, type){
-  // Returns serial of next event of given type after serial, or null.
-  // Uses binary search to find the starting region, then scans forward for matching type.
-  var seq = (getMoonState().sequences[moonName]) || [];
-  if (!seq.length) return null;
-
-  // Binary search for first entry with serial > target
-  var lo = 0, hi = seq.length;
-  while (lo < hi){
-    var mid = (lo + hi) >>> 1;
-    if (seq[mid].serial <= serial) lo = mid + 1;
-    else hi = mid;
+  // Returns the wrapper serial of the next inflection of `type` strictly
+  // after `serial`, or null if none within MOON_PREDICTION_LIMITS.highMaxDays.
+  var key = _moonKeyForName(moonName);
+  if (!key) return null;
+  try {
+    var worldId = getEngineWorldId();
+    var fromDate = serialToCalendarDate(serial);
+    var horizon = MOON_PREDICTION_LIMITS.highMaxDays;
+    var result = engineMoons.nextEvent(worldId, key, fromDate, type, horizon, getMoonOpts());
+    if (!result) return null;
+    return toSerial(result.year, _calendarDateMonthIndex(result), 'day' in result ? result.day : 1);
+  } catch (_e){
+    return null;
   }
-
-  // Scan forward from lo for the first matching type
-  for (var i = lo; i < seq.length; i++){
-    if (seq[i].type === type) return seq[i].serial;
-  }
-  return null;
 }
 
 // ---------------------------------------------------------------------------
@@ -1402,12 +1004,12 @@ export function resetMoonHistory(referenceSerial?, seedToday?){
   return pruneMoonHistory(ref);
 }
 
+// The legacy invalidation chain (sequence cache, derived caches,
+// modelRevision bump) is a no-op now that the engine is closed-form
+// per-call. Kept exported because today.ts still calls it after date
+// mutations — the surviving work is reseeding the recentHistory
+// window so subsequent renders show fresh moon icons.
 export function invalidateMoonModel(seedToday?){
-  var ms = getMoonState();
-  ms.generatedFrom = null;
-  ms.generatedThru = 0;
-  ms.modelRevision = (parseInt(ms.modelRevision, 10) || 1) + 1;
-  _clearMoonDerivedCaches();
   return resetMoonHistory(todaySerial(), seedToday);
 }
 
@@ -1605,25 +1207,14 @@ export function moonPanelParts(serialOverride?){
 
   // GM controls (separate message to stay within Roll20 size limits)
   {
-    var seedLine = '';
-    if (sys.moons && sys.moons.length){
-      var activeSeed = (ms.systemSeed != null && String(ms.systemSeed).trim() !== '')
-        ? String(ms.systemSeed)
-        : 'default';
-      seedLine = '<div style="font-size:.78em;opacity:.5;margin-top:5px;">'+
-        'Seed: <code>'+esc(activeSeed)+'</code>'+
-      '</div>';
-    }
-
-    // Phase shifts (set full/new) are web-app-only; Roll20 only exposes toggle + reseed.
-    var manageChoices = 'Toggle Moons On/Off,toggle|Reseed Moons,reseed';
-    if (String(st.calendarSystem || '').toLowerCase() === 'dragonlance'){
-      manageChoices += '|Set Night of the Eye,eye ?\\{Date dd or mm dd or mm dd yyyy\\}|Reset Night of the Eye,eye reset';
-    }
+    // Per-moon anchors (Night of the Eye, full/new phase shifts, reseed)
+    // are web-app-only — pasted into Roll20 via `!cal token`. Roll20 only
+    // exposes the toggle.
+    var manageChoices = 'Toggle Moons On/Off,toggle';
     var gmControls = '<div style="margin:4px 0;">' +
       button('Management','moon manage ?{Action|' + manageChoices + '}') +
       '</div>';
-    gmControls += seedLine +
+    gmControls +=
       '<div style="margin-top:7px;">' + button('⬅️ Back','show') + '</div>';
     parts.push(_menuBox('🌙 GM Controls', gmControls));
   }
@@ -1731,6 +1322,11 @@ export function handleMoonCommand(m, args){
     );
   }
 
+  // Management dropdown emits `!cal moon manage <action>`; we forward to
+  // the matching subcommand. Only `toggle` survives the engine swap —
+  // the `reseed`, `eye`, and `reset` family relied on the wrapper's
+  // pre-generated sequence buffer and GM-anchor blob, both deleted in
+  // PR 2c. Anchors now flow exclusively through `!cal token`.
   if (sub === 'manage'){
     var manageAction = String(args[2] || '').toLowerCase();
     if (!manageAction){
@@ -1745,97 +1341,8 @@ export function handleMoonCommand(m, args){
     return whisperParts(m.who, moonPanelParts());
   }
 
-  if (sub === 'reseed'){
-    var msReseed = getMoonState();
-    var prevSeed = (msReseed.systemSeed != null && String(msReseed.systemSeed).trim() !== '')
-      ? String(msReseed.systemSeed).trim()
-      : 'auto';
-    var nextSeed = 'moon-' + todaySerial() + '-' + Math.round(_moonHashStr(prevSeed + '|' + todaySerial() + '|' + (msReseed.generatedThru || 0)) * 1000000);
-    msReseed.systemSeed = nextSeed;
-    invalidateMoonModel(false);
-    moonEnsureSequences();
-    whisper(m.who, 'Moon sequences reseeded to <b>'+esc(nextSeed)+'</b>.');
-    return whisperParts(m.who, moonPanelParts());
-  }
-
-  // !cal moon eye <dateSpec>
-  // !cal moon eye reset
-  if (sub === 'eye' || sub === 'nightoftheeye'){
-    if (String(st.calendarSystem || '').toLowerCase() !== 'dragonlance'){
-      return whisper(m.who, 'Night of the Eye anchoring is only available for Dragonlance.');
-    }
-    if (String(args[2] || '').toLowerCase() === 'reset'){
-      var msEyeReset = getMoonState();
-      delete msEyeReset.systemAnchors.dragonlanceNightOfTheEye;
-      ['Solinari', 'Lunitari', 'Nuitari'].forEach(function(name){
-        msEyeReset.gmAnchors[name] = (msEyeReset.gmAnchors[name] || []).filter(function(anchor){
-          return !anchor.eyeAnchor;
-        });
-      });
-      invalidateMoonModel(false);
-      moonEnsureSequences();
-      return whisper(m.who, 'Night of the Eye override reset. Dragonlance has returned to the default anchor.');
-    }
-
-    var eyeDateToks = args.slice(2).map(function(t){ return String(t || '').trim(); }).filter(Boolean);
-    var eyePref = parseDatePrefixForAdd(eyeDateToks);
-    if (!eyePref){
-      return whisper(m.who, 'Usage: <code>!cal moon eye &lt;dateSpec&gt;</code> or <code>!cal moon eye reset</code>');
-    }
-
-    var eyeSerial = toSerial(eyePref.year, eyePref.mHuman - 1, eyePref.day);
-    var msEye = getMoonState();
-    msEye.systemAnchors.dragonlanceNightOfTheEye = {
-      serial: eyeSerial,
-      timeFrac: 0
-    };
-    ['Solinari', 'Lunitari', 'Nuitari'].forEach(function(name){
-      msEye.gmAnchors[name] = (msEye.gmAnchors[name] || []).filter(function(anchor){
-        return !anchor.eyeAnchor;
-      });
-      msEye.gmAnchors[name].push({ serial: eyeSerial, type: 'full', eyeAnchor: true });
-    });
-    invalidateMoonModel(false);
-    moonEnsureSequences();
-
-    var eyeMonthName = _displayMonthDayParts(eyePref.mHuman - 1, eyePref.day).monthName;
-    return whisper(
-      m.who,
-      'Night of the Eye anchored to <b>' + esc(String(eyePref.day)) + ' ' + esc(eyeMonthName) + ' ' + esc(String(eyePref.year)) + '</b> at midnight.<br>' +
-      '<span style="opacity:.6;font-size:.85em;">Solinari, Lunitari, and Nuitari align full on that date.</span>'
-    );
-  }
-
-  // !cal moon reset [<MoonName>]  — remove GM phase overrides
-  if (sub === 'reset'){
-    var clearName = String(args[2] || '').trim();
-    var sys3 = _getMoonSys();
-    var mName3 = clearName ? _moonParseMoonName(clearName, sys3) : null;
-    var ms3 = getMoonState();
-    if (mName3){
-      ms3.gmAnchors[mName3] = [];
-      if (/^(Solinari|Lunitari|Nuitari)$/.test(String(mName3 || ''))){
-        delete ms3.systemAnchors.dragonlanceNightOfTheEye;
-      }
-      invalidateMoonModel(false);
-      moonEnsureSequences();
-      return whisper(m.who, 'Phase overrides reset for <b>'+esc(mName3)+'</b>.');
-    } else {
-      ms3.gmAnchors = {};
-      delete ms3.systemAnchors.dragonlanceNightOfTheEye;
-      invalidateMoonModel(false);
-      moonEnsureSequences();
-      return whisper(m.who, 'All moon phase overrides reset.');
-    }
-  }
-
   whisper(m.who,
     'Moon: <code>!cal moon</code> &nbsp;·&nbsp; ' +
-    '<code>!cal moon on &lt;dateSpec&gt;</code> &nbsp;·&nbsp; ' +
-    '<code>!cal moon reseed</code> &nbsp;·&nbsp; ' +
-    '<code>!cal moon reset [name]</code>' +
-    (String(st.calendarSystem || '').toLowerCase() === 'dragonlance'
-      ? ' &nbsp;·&nbsp; <code>!cal moon eye &lt;dateSpec&gt;</code>'
-      : '')
+    '<code>!cal moon on &lt;dateSpec&gt;</code>'
   );
 }
