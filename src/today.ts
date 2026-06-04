@@ -7,9 +7,9 @@ import { colorsAPI } from './color.js';
 import { _invalidateSerialCache, _isLeapMonth, fromSerial, toSerial, todaySerial } from './date-math.js';
 import { DaySpec, Parse } from './parsing.js';
 import { _deliverAdditionalCalendarRange, _deliverTopLevelCalendarRange, buildAdditionalRangesCommand, buildCalendarsHtmlForSpec, defaultKeyFor, eventDisplayName, getEventColor, mergeInNewDefaultEvents, occurrencesInRange } from './events.js';
-import { button, clamp, esc, eventLineHtml, listAllEventsTableHtml, _monthRangeFromSerial, removeListHtml, removeMatchesListHtml, restoreDefaultEvents, suppressedDefaultsListHtml } from './rendering.js';
-import { _displayMonthDayParts, _menuBox, _serialToDateSpec, _shiftSerialByMonth, activeEffectsPanelHtml, addEventSmart, addMonthlySmart, addYearlySmart, additionalHubHtml, calendarSystemListHtml, currentDateLabel, dateLabelFromSerial, formalCurrentDateLabel, helpCalendarSystemMenu, helpEventColorsMenu, helpRootMenu, helpSeasonsMenu, helpThemesMenu, nextForDayOnly, removeEvent, seasonSetListHtml, sendCurrentDate, setDate, stepDays, taskCardHtml, themeListHtml } from './ui.js';
-import { _normalizePackedWords, _playerTodayHtml, _showDefaultCalView, runEventsShortcut, send, whisper, whisperUi } from './commands.js';
+import { button, clamp, esc, eventLineHtml, _monthRangeFromSerial } from './rendering.js';
+import { _displayMonthDayParts, _menuBox, _serialToDateSpec, _shiftSerialByMonth, activeEffectsPanelHtml, additionalHubHtml, calendarSystemListHtml, currentDateLabel, dateLabelFromSerial, formalCurrentDateLabel, helpCalendarSystemMenu, helpEventColorsMenu, helpRootMenu, helpSeasonsMenu, helpThemesMenu, nextForDayOnly, seasonSetListHtml, sendCurrentDate, setDate, stepDays, taskCardHtml, themeListHtml } from './ui.js';
+import { _normalizePackedWords, _playerTodayHtml, _showDefaultCalView, send, whisper, whisperUi } from './commands.js';
 import { _getMoonSys, _moonLastEvent, _moonNextEvent, _moonPeakPhaseDay, _moonPhaseEmoji, _moonPhaseLabel, handleMoonCommand, invalidateMoonModel, moonEnsureSequences, moonPhaseAt } from './moon.js';
 import { getPlanarState, _getAllPlaneData, _getPlaneData, handlePlanesCommand } from './planes.js';
 import { enginePlanes, getPlanePositions, serialToCalendarDate } from './engine-opts.js';
@@ -170,49 +170,6 @@ export function invokeEventSub(m, sub, args){
 }
 
 export var EVENT_SUB = {
-  add: {
-    usage: 'events.add',
-    run: function(m, args){ addEventSmart(args); }
-  },
-  addmonthly: {
-    usage: null,
-    run: function(m, args){ addMonthlySmart(args); }
-  },
-  addyearly: {
-    usage: null,
-    run: function(m, args){ addYearlySmart(args); }
-  },
-  remove: {
-    usage: 'events.remove',
-    run: function(m, args){
-      if (!args || !args.length) { whisper(m.who, removeListHtml()); return; }
-      var sub = String(args[0]||'').toLowerCase();
-      if (sub === 'list') {
-        if (args.length === 1) { whisper(m.who, removeListHtml()); return; }
-        return usage('events.remove', m);
-      }
-      if (sub === 'key' || sub === 'series') { removeEvent(args.join(' ')); return; }
-      whisper(m.who, removeMatchesListHtml(args.join(' ')));
-    }
-  },
-  restore: {
-    usage: 'events.restore',
-    run: function(m, args){
-      if ((args[0] || '').toLowerCase() === 'list'){
-        whisper(m.who, suppressedDefaultsListHtml());
-        return;
-      }
-      restoreDefaultEvents(args.join(' '));
-    }
-  },
-  list: {
-    usage: null,
-    run: function(m){ whisper(m.who, listAllEventsTableHtml()); }
-  },
-  source: {
-    usage: null,
-    run: function(m){ return commands.source.run(m, ['!cal', 'source', 'list']); }
-  },
   // §5.5 Events Current — Past | Today | Upcoming with week-length
   // spillover into adjacent months. Every line carries an explicit
   // month label (no "events this month" title).
@@ -247,16 +204,6 @@ export var EVENT_SUB = {
         dest: 'whisper',
         render: _eventsRangeHtml
       });
-    }
-  },
-  manage: {
-    usage: null,
-    run: function(m, args){
-      // Route management sub-actions
-      var action = (args[0] || '').toLowerCase();
-      if (!action) return whisper(m.who, 'Management: use the dropdown to select an action.');
-      // The dropdown routes to existing commands, so this is a fallback
-      return invokeEventSub(m, action, args.slice(1));
     }
   }
 };
@@ -870,9 +817,6 @@ export var commands = {
     _showDefaultCalView(m);
   },
 
-  // FIX: top-level !cal list now works
-  list: function(m){ whisper(m.who, listAllEventsTableHtml()); },
-
   setup: function(m){
     whisperUi(m.who, 'Setup is already complete.');
   },
@@ -959,23 +903,18 @@ export var commands = {
     whisperUi(m.who,'Setting updated.');
   }},
 
-  events: { gm:true, run:function(m, a){
+  // §5.5 — `!cal events current` / `!cal events all [yyyy]` / the
+  // legacy `panel` and `ranges` whispered surfaces. The GM
+  // add/remove/list family was retired when events became canon-pack
+  // only; new event content arrives via `!cal token` from the web
+  // app. Existing custom-event data in
+  // `state.PartyBuffCalendar.calendar.events` continues to render
+  // in the panels.
+  events: { run:function(m, a){
     var args = a.slice(2);
-    var sub  = (args.shift() || 'panel').toLowerCase();
+    var sub  = (args.shift() || 'current').toLowerCase();
     return invokeEventSub(m, sub, args);
   }},
-
-  add:     { gm:true, run:function(m,a){ runEventsShortcut(m, a, 'add'); } },
-  remove:  { gm:true, run:function(m,a){
-    var args = a.slice(2);
-    if (!args.length) { whisper(m.who, removeListHtml()); return; }
-    return invokeEventSub(m,'remove', args);
-  }},
-  restore: { gm:true, run:function(m,a){ runEventsShortcut(m, a, 'restore'); } },
-
-  addmonthly: { gm:true, run:function(m,a){ addMonthlySmart(a.slice(2)); } },
-  addyearly:  { gm:true, run:function(m,a){ addYearlySmart(a.slice(2)); } },
-  addannual:  { gm:true, run:function(m,a){ addYearlySmart(a.slice(2)); } },
 
   send: { gm:true, run:function(m, a){
     var restTokens = _normalizePackedWords(a.slice(2).join(' ')).split(/\s+/).filter(Boolean);

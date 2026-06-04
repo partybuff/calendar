@@ -33,12 +33,16 @@ below, treat it as legacy and confirm with the user before extending it.
   Dragonlance (Krynn), Exandria, Mystara, Birthright, Gregorian.
 - Moon **phases** (illumination + label only). No sky position, altitude,
   azimuth, eclipse math, or "long shadows" framing.
-- Eberron planar events surfaced as **entries in the events list**.
+- Eberron planar events surfaced in the Planar Current/All panels.
   Canon-only — no GM-tunable seeds, no off-cycle generation, no overrides.
-- Custom events: one-off, monthly, yearly.
-- GM commands: set world, set date, advance/retreat, add/remove events,
-  send a view to players.
-- Button-first UX. `!cal` is the only chat entry point.
+- Events display, canon-pack only. Event content arrives via
+  `!cal token` from the web app; the Roll20 wrapper has no
+  add/remove/list GM commands.
+- GM commands: set world, set date, advance/retreat, paste a setup
+  token, broadcast the today panel.
+- Whisper-first UX. `!cal` is the only chat entry point and every
+  reply is whispered to the caller; `!cal send` (GM-only) is the
+  single public broadcast surface.
 
 ### Out of scope (do not add)
 
@@ -57,6 +61,10 @@ below, treat it as legacy and confirm with the user before extending it.
 - Roll20 pages with embedded "live" rendering.
 - The standalone web app, the showcase site, and any Cloudflare Workers
   deployment. Those live in `partybuff/party-buff`.
+
+- GM custom events (`!cal event add` / `addmonthly` / `addyearly` /
+  `remove` / `restore` / `list`). Events are canon-pack only as of
+  the §5 UX rewrite; the management command family was retired.
 
 If a request lands in the "out of scope" list, push back. The user
 explicitly chose to cut these.
