@@ -777,19 +777,26 @@ export function additionalHubHtml(){
   var st = ensureSettings();
   var sysKey = String(st.calendarSystem || '').toLowerCase();
   var rows = [];
-  // §5.5 — each subsystem exposes a Current panel (Past/Today/Upcoming
-  // by default) and an All panel (full year listing). Lunar and Planar
-  // panels still route to the legacy handlers in this PR; PR 2d-c
-  // ships their Current/All variants.
+  // §5.5 — each subsystem has a Current panel (per-row state with
+  // last/next inflections for Lunar; Past/Today/Upcoming sectioning for
+  // Events and Planar) and an All panel (full year listing). Planar is
+  // suppressed on non-Eberron worlds since the engine only ships canon
+  // planar data for Eberron.
   rows.push('<div>' +
     button('Events Current','events current') + ' ' +
     button('Events All','events all') +
     '</div>');
   if (st.moonsEnabled !== false){
-    rows.push('<div>' + button('🌙 Moons','moon') + '</div>');
+    rows.push('<div>' +
+      button('🌙 Lunar Current','lunar current') + ' ' +
+      button('🌙 Lunar All','lunar all') +
+      '</div>');
   }
   if (st.planesEnabled !== false && sysKey === 'eberron'){
-    rows.push('<div>' + button('🌀 Planes','planes') + '</div>');
+    rows.push('<div>' +
+      button('🌀 Planar Current','planar current') + ' ' +
+      button('🌀 Planar All','planar all') +
+      '</div>');
   }
   rows.push('<div style="margin-top:6px;">' + button('⬅️ Back','') + '</div>');
   return _menuBox('Additional', rows.join(''));
