@@ -19,321 +19,77 @@ import { getEngineWorld, getEngineWorldId, getMoonOpts, serialToCalendarDate } f
 // ---------------------------------------------------------------------------
 // 20a) Moon data
 // ---------------------------------------------------------------------------
-
-// Historical candidate-selection notes are archived in README.md and
-// DESIGN.md rather than runtime data.
-/*
-  {
-    moon: 'Lharvion',
-    currentReferenceMoon: 'Nereid (Neptune)',
-    alternateSeenInOlderLore: 'Phoebe (Saturn)',
-    reason: 'Current orbital parameters (eccentricity 0.7507, inclination 7.23°) match Nereid, but older lore text referenced Phoebe.'
-  }
-*/
-
-// ---------------------------------------------------------------------------
-// 20a-i) Eberron moon core data (campaign baseline)
-// ---------------------------------------------------------------------------
-// Canonical Eberron moon values used in this script.
-// Fields centralized here for quick reference and to avoid drift:
-//   color               -> display color for moon UI badges/chips
-//   diameter            -> moon diameter in miles
-//   avgOrbitalDistance  -> average orbital distance from Eberron in miles
-// NOTE: This section intentionally excludes the longer moon-selection rationale;
-// keep that in README.md / DESIGN.md instead of runtime data.
-export var EBERRON_MOON_CORE_DATA = {
-  Zarantyr:  { color:'#F5F5FA', diameter:1250, avgOrbitalDistance:14300 },
-  Olarune:   { color:'#FFC68A', diameter:1000, avgOrbitalDistance:18000 },
-  Therendor: { color:'#D3D3D3', diameter:1100, avgOrbitalDistance:39000 },
-  Eyre:      { color:'#C0C0C0', diameter:1200, avgOrbitalDistance:52000 },
-  Dravago:   { color:'#E6E6FA', diameter:2000, avgOrbitalDistance:77500 },
-  Nymm:      { color:'#FFD96B', diameter:900,  avgOrbitalDistance:95000 },
-  Lharvion:  { color:'#F5F5F5', diameter:1350, avgOrbitalDistance:125000 },
-  Barrakas:  { color:'#F0F8FF', diameter:1500, avgOrbitalDistance:144000 },
-  Rhaan:     { color:'#9AC0FF', diameter:800,  avgOrbitalDistance:168000 },
-  Sypheros:  { color:'#696969', diameter:1100, avgOrbitalDistance:183000 },
-  Aryth:     { color:'#FF4500', diameter:1300, avgOrbitalDistance:195000 },
-  Vult:      { color:'#A9A9A9', diameter:1800, avgOrbitalDistance:252000 }
-};
-
-export function _eberronMoonCore(moonName){
-  return EBERRON_MOON_CORE_DATA[moonName] || { color:'#CCCCCC', diameter:1000, avgOrbitalDistance:100000 };
-}
+//
+// Wrapper overlay merged on top of the engine's per-world `moons.bodies`.
+// The engine supplies name, title, color, associatedMonth, and the cycle
+// length. The wrapper adds `plane` (Eberron planar tagging) and serves as
+// a fallback for worlds without engine moon data. Per-moon orbital
+// constants (diameter, inclination, eccentricity, albedo, epochSeed,
+// nodePrecession) and per-moon lore notes lived here historically but
+// were never read at runtime — removed in the post-#159 cleanup.
 
 export var MOON_SYSTEMS = {
   eberron: {
-    id: 'eberron',
     moons: [
-      // ── ZARANTYR ── The Storm Moon ─────────────────────────────────
-      // Analog: Luna (Earth's Moon). The reference moon — pearly white,
-      // moderate eccentricity, wide inclination sweep. Closest and most
-      // influential on tides. Kythri = chaos; storms rage when full.
-      // Real Luna: ecc 0.0549, inc 5.145°, albedo 0.12.
-      { name:'Zarantyr', title:'The Storm Moon',    color:_eberronMoonCore('Zarantyr').color, associatedMonth:1,  plane:'Kythri',   dragonmark:'Mark of Storm',
-        synodicPeriod:27.32, diameter:_eberronMoonCore('Zarantyr').diameter, distance:_eberronMoonCore('Zarantyr').avgOrbitalDistance,
-        inclination:5.145, eccentricity:0.0549, albedo:0.12,
-        epochSeed:{ defaultSeed:'kythri', referenceDate:{year:998,month:1,day:1} } },
-
-      // ── OLARUNE ── The Sentinel Moon ───────────────────────────────
-      // Analog: Titan (Saturn). The most natural moon — thick atmosphere,
-      // methane rain, seasons, lakes. Orange haze hides the surface from
-      // view: the sentinel who watches unseen. Low inclination, steady.
-      // Real Titan: ecc 0.0288, inc 0.33°, albedo 0.22.
-      { name:'Olarune', title:'The Sentinel Moon', color:_eberronMoonCore('Olarune').color, associatedMonth:2,  plane:'Lamannia', dragonmark:'Mark of Sentinel',
-        synodicPeriod:30.8052, diameter:_eberronMoonCore('Olarune').diameter, distance:_eberronMoonCore('Olarune').avgOrbitalDistance,
-        inclination:0.33, eccentricity:0.0288, albedo:0.22,
-        epochSeed:{ defaultSeed:'lamannia', referenceDate:{year:998,month:1,day:1} } },
-
-      // ── THERENDOR ── The Healer's Moon ─────────────────────────────
-      // Analog: Europa (Jupiter). Smooth ice shell over a warm subsurface
-      // ocean — the healer's calm exterior with life-sustaining depth
-      // beneath. Youngest surface of the Galileans: constantly renewed
-      // (healing). In 1:2:4 resonance with Ganymede/Nymm → connected
-      // to order. Bright reflective ice = gentle healing light.
-      // Real Dione: ecc 0.0022, inc 0.03°, albedo 0.99.
-      { name:'Therendor',title:"The Healer's Moon", color:_eberronMoonCore('Therendor').color, associatedMonth:3,  plane:'Syrania',  dragonmark:'Mark of Healing',
-        synodicPeriod:34.7350, diameter:_eberronMoonCore('Therendor').diameter, distance:_eberronMoonCore('Therendor').avgOrbitalDistance,
-        inclination:0.03, eccentricity:0.0022, albedo:0.99,
-        epochSeed:{ defaultSeed:'syrania', referenceDate:{year:998,month:1,day:1} } },
-
-      // ── EYRE ── The Anvil ──────────────────────────────────────────
-      // Analog: Mimas (Saturn). Heavily cratered "Death Star" moon with
-      // the giant Herschel crater = a forge mark. Bright icy surface
-      // (albedo 0.96) reflects Fernia's fire. In 4:3 resonance with
-      // Titan/Olarune → nature feeds the forge.
-      // Real Mimas: ecc 0.0196, inc 1.53°, albedo 0.96.
-      { name:'Eyre',title:'The Anvil',         color:_eberronMoonCore('Eyre').color, associatedMonth:4,  plane:'Fernia',   dragonmark:'Mark of Making',
-        synodicPeriod:39.1661, diameter:_eberronMoonCore('Eyre').diameter, distance:_eberronMoonCore('Eyre').avgOrbitalDistance,
-        inclination:1.53, eccentricity:0.0196, albedo:0.96,
-        epochSeed:{ defaultSeed:'fernia', referenceDate:{year:998,month:1,day:1} } },
-
-      // ── DRAVAGO ── The Herder's Moon ───────────────────────────────
-      // Analog: Triton (Neptune). Retrograde orbit (inc 156.8°) —
-      // moves against every other moon, embodying Risia's opposition
-      // to natural order. Near-zero eccentricity = frozen stasis.
-      // Nitrogen ice surface, high albedo. The herder watches from
-      // a crystalline vantage, circling in eternal counter-motion.
-      // Largest moon by diameter. Lavender = planar tint over ice.
-      // Real Triton: ecc 0.000016, inc 156.8°, albedo 0.76.
-      { name:'Dravago',title:"The Herder's Moon", color:_eberronMoonCore('Dravago').color, associatedMonth:5,  plane:'Risia',    dragonmark:'Mark of Handling',
-        synodicPeriod:44.1625, diameter:_eberronMoonCore('Dravago').diameter, distance:_eberronMoonCore('Dravago').avgOrbitalDistance,
-        inclination:156.8, eccentricity:0.000016, albedo:0.76,
-        epochSeed:{ defaultSeed:'risia', referenceDate:{year:998,month:1,day:1} } },
-
-      // ── NYMM ── The Crown ──────────────────────────────────────────
-      // Analog: Ganymede (Jupiter). LARGEST moon in the solar system —
-      // a crown jewel. The ONLY moon with its own magnetic field:
-      // sovereign authority, self-contained order. In perfect 1:2:4
-      // Laplace resonance with Europa/Therendor and Io → mathematical
-      // perfection = Daanvi. Near-circular orbit, near-equatorial.
-      // Gold = Daanvi's planar influence, not geology.
-      // Real Ganymede: ecc 0.0013, inc 0.20°, albedo 0.43.
-      { name:'Nymm',title:'The Crown',         color:_eberronMoonCore('Nymm').color, associatedMonth:6,  plane:'Daanvi',   dragonmark:'Mark of Hospitality',
-        synodicPeriod:49.7962, diameter:_eberronMoonCore('Nymm').diameter, distance:_eberronMoonCore('Nymm').avgOrbitalDistance,
-        inclination:0.20, eccentricity:0.0013, albedo:0.43,
-        epochSeed:{ defaultSeed:'daanvi', referenceDate:{year:998,month:1,day:1} },
-        nodePrecession:{ period:336, navigable:true } },
-
-      // ── LHARVION ── The Eye ────────────────────────────────────────
-      // Analog: Hyperion (Saturn). The ONLY confirmed chaotic tumbler
-      // in the solar system — never shows the same face twice. Sponge-
-      // like surface pocked with deep craters. Unpredictable rotation
-      // embodies Xoriat's madness. Moderate eccentricity (0.123) gives
-      // noticeable brightness variation. Dark, low albedo.
-      // Dull white with 750-mile black chasm → the Eye.
-      // Real Hyperion: ecc 0.1230, inc 0.43°, albedo 0.30.
-      { name:'Lharvion',title:'The Eye',           color:_eberronMoonCore('Lharvion').color, associatedMonth:7,  plane:'Xoriat',   dragonmark:'Mark of Detection',
-        synodicPeriod:56.1487, diameter:_eberronMoonCore('Lharvion').diameter, distance:_eberronMoonCore('Lharvion').avgOrbitalDistance,
-        inclination:0.43, eccentricity:0.1230, albedo:0.30,
-        epochSeed:{ defaultSeed:'xoriat', referenceDate:{year:998,month:1,day:1} } },
-
-      // ── BARRAKAS ── The Lantern ────────────────────────────────────
-      // Analog: Enceladus (Saturn). THE brightest body in the solar
-      // system — geometric albedo 1.375 (backscattering from pure ice
-      // exceeds a flat-disk model). Ice geysers feed Saturn's E-ring.
-      // Near-equatorial orbit lights all latitudes equally. The Lantern
-      // of Irian needs no magical amplification: real physics already
-      // gives it supernatural brightness. Slight ecc for gentle pulsing.
-      // Real Enceladus: ecc 0.0047, inc 0.02°, albedo 1.375.
-      { name:'Barrakas',title:'The Lantern',       color:_eberronMoonCore('Barrakas').color, associatedMonth:8,  plane:'Irian',    dragonmark:'Mark of Finding',
-        synodicPeriod:63.3115, diameter:_eberronMoonCore('Barrakas').diameter, distance:_eberronMoonCore('Barrakas').avgOrbitalDistance,
-        inclination:0.02, eccentricity:0.0047, albedo:1.375,
-        epochSeed:{ defaultSeed:'irian', referenceDate:{year:998,month:1,day:1} } },
-
-      // ── RHAAN ── The Book ──────────────────────────────────────────
-      // Analog: Miranda (Uranus). The "Frankenstein moon" — shattered
-      // and reassembled, its patchwork surface looks like pages from
-      // different books stitched together. Three coronae with chevron
-      // patterns. Verona Rupes = tallest cliff in the solar system.
-      // Named after Shakespeare's Tempest character — the only HUMAN
-      // among Uranus's fairy-named moons. Once tumbled chaotically
-      // (like Hyperion) during a past 3:1 resonance with Umbriel, but
-      // now calm: stories of violence written on a peaceful face.
-      // Orbits a sideways planet → extreme seasonal illumination.
-      // Smallest Eberron moon. Blue = Thelanis fey light through
-      // ancient stone. The Book carries every story on its skin.
-      // Real Miranda: ecc 0.0013, inc 4.34°, albedo 0.32.
-      { name:'Rhaan',title:'The Book',          color:_eberronMoonCore('Rhaan').color, associatedMonth:9,  plane:'Thelanis', dragonmark:'Mark of Scribing',
-        synodicPeriod:71.3881, diameter:_eberronMoonCore('Rhaan').diameter, distance:_eberronMoonCore('Rhaan').avgOrbitalDistance,
-        inclination:4.34, eccentricity:0.0013, albedo:0.32,
-        epochSeed:{ defaultSeed:'thelanis', referenceDate:{year:998,month:1,day:1} } },
-
-      // ── SYPHEROS ── The Shadow ─────────────────────────────────────
-      // Analog: Phobos (Mars). The closest and fastest martian moon —
-      // dark, small, and named for fear itself. Its tidally decaying
-      // orbit suggests a body already being consumed, which fits Mabar's
-      // entropy. Low-inclination prograde orbit, modest eccentricity,
-      // and very dark albedo keep it ominous without making it backward.
-      // Real Phobos: ecc 0.0151, inc 1.08°, albedo 0.071.
-      { name:'Sypheros',title:'The Shadow',        color:_eberronMoonCore('Sypheros').color, associatedMonth:10, plane:'Mabar',     dragonmark:'Mark of Shadow',
-        synodicPeriod:80.4950, diameter:_eberronMoonCore('Sypheros').diameter, distance:_eberronMoonCore('Sypheros').avgOrbitalDistance,
-        inclination:1.08, eccentricity:0.0151, albedo:0.071 },
-
-      // ── ARYTH ── The Gateway ───────────────────────────────────────
-      // Analog: Iapetus (Saturn). THE two-tone moon — leading hemisphere
-      // coal-black (albedo 0.05), trailing hemisphere bright (0.50).
-      // A literal gateway between light and dark, life and death.
-      // 13km equatorial ridge = a threshold between realms. HIGHEST
-      // inclination of any regular Saturnian moon (7.57°) → sees both
-      // extremes of the sky. Walnut-shaped. Dark reddish-brown leading
-      // side matches #FF4500 burnt orange-red. Coated in dark material
-      // shed by Sypheros: the Shadow marks the Gateway.
-      // Real Iapetus: ecc 0.0283, inc 7.57°, albedo 0.275 (averaged; not tidally locked, both faces visible).
-      { name:'Aryth',title:'The Gateway',       color:_eberronMoonCore('Aryth').color, associatedMonth:11, plane:'Dolurrh',   dragonmark:'Mark of Passage',
-        synodicPeriod:90.7637, diameter:_eberronMoonCore('Aryth').diameter, distance:_eberronMoonCore('Aryth').avgOrbitalDistance,
-        inclination:7.57, eccentricity:0.0283, albedo:0.275,
-        epochSeed:{ defaultSeed:'dolurrh', referenceDate:{year:998,month:1,day:1} } },
-
-      // ── VULT ── The Warding Moon ───────────────────────────────────
-      // Analog: Oberon (Uranus). Outermost major Uranian moon — the
-      // outer ward. Heavily cratered from endless bombardment = scars
-      // of eternal war (Shavarath). Dark deposits fill crater floors.
-      // An 11km mountain = fortress on the frontier. Named for
-      // Shakespeare's fairy king in A Midsummer Night's Dream: the
-      // warrior-king who holds the line. Near-circular, near-equatorial
-      // = disciplined, unwavering patrol. Gray with reddish tint.
-      // Real Oberon: ecc 0.0014, inc 0.07°, albedo 0.23.
-      { name:'Vult',title:'The Warding Moon',  color:_eberronMoonCore('Vult').color, associatedMonth:12, plane:'Shavarath', dragonmark:'Mark of Warding',
-        synodicPeriod:102.3424, diameter:_eberronMoonCore('Vult').diameter, distance:_eberronMoonCore('Vult').avgOrbitalDistance,
-        inclination:0.07, eccentricity:0.0014, albedo:0.23,
-        epochSeed:{ defaultSeed:'shavarath', referenceDate:{year:998,month:1,day:1} } }
+      { name:'Zarantyr',  title:'The Storm Moon',     color:'#F5F5FA', associatedMonth:1,  plane:'Kythri',    synodicPeriod:27.32 },
+      { name:'Olarune',   title:'The Sentinel Moon',  color:'#FFC68A', associatedMonth:2,  plane:'Lamannia',  synodicPeriod:30.8052 },
+      { name:'Therendor', title:"The Healer's Moon",  color:'#D3D3D3', associatedMonth:3,  plane:'Syrania',   synodicPeriod:34.7350 },
+      { name:'Eyre',      title:'The Anvil',          color:'#C0C0C0', associatedMonth:4,  plane:'Fernia',    synodicPeriod:39.1661 },
+      { name:'Dravago',   title:"The Herder's Moon",  color:'#E6E6FA', associatedMonth:5,  plane:'Risia',     synodicPeriod:44.1625 },
+      { name:'Nymm',      title:'The Crown',          color:'#FFD96B', associatedMonth:6,  plane:'Daanvi',    synodicPeriod:49.7962 },
+      { name:'Lharvion',  title:'The Eye',            color:'#F5F5F5', associatedMonth:7,  plane:'Xoriat',    synodicPeriod:56.1487 },
+      { name:'Barrakas',  title:'The Lantern',        color:'#F0F8FF', associatedMonth:8,  plane:'Irian',     synodicPeriod:63.3115 },
+      { name:'Rhaan',     title:'The Book',           color:'#9AC0FF', associatedMonth:9,  plane:'Thelanis',  synodicPeriod:71.3881 },
+      { name:'Sypheros',  title:'The Shadow',         color:'#696969', associatedMonth:10, plane:'Mabar',     synodicPeriod:80.4950 },
+      { name:'Aryth',     title:'The Gateway',        color:'#FF4500', associatedMonth:11, plane:'Dolurrh',   synodicPeriod:90.7637 },
+      { name:'Vult',      title:'The Warding Moon',   color:'#A9A9A9', associatedMonth:12, plane:'Shavarath', synodicPeriod:102.3424 }
     ]
   },
 
-  // =========================================================================
-  // FAERUNIAN — Selûne (single moon of Toril)
-  // =========================================================================
-  // Selûne: full at midnight Hammer 1, 1372 DR. 30.4375-day period.
-  // 48 synodic cycles = 1461 days = exactly 4 Harptos years (incl. Shieldmeet).
-  // Phase is perfectly self-resetting on the four-year leap cycle.
-  // ~2000 miles diameter, ~183,000 miles distance. Similar apparent size to Earth's moon.
-  // Bright enough to cast pale shadows. Associated with lycanthropy, navigation, tides.
-  // Trailed by the Tears of Selûne (asteroid cluster, visible flavor).
   faerunian: {
-    id: 'faerunian',
-    name: 'Toril',
-    description: "Selûne, the silver moon of Toril. 30.4375-day cycle aligned to the Harptos leap year.",
     moons: [
-      { name:'Selûne', title:'The Moonmaiden', color:'#C8D8F0', associatedMonth:null,
-        synodicPeriod:30.4375, diameter:2000, distance:183000,
-        inclination:5.1, eccentricity:0.054, albedo:0.25,
-        epochSeed:{ defaultSeed:'selune', referenceDate:{year:1372,month:1,day:1} },
-        loreNote:'Full at midnight Hammer 1, 1372 DR. Trailed by the Tears of Selûne. Associated with lycanthropy, divination, navigation, and tides.',
-        deity:'Selûne' }
+      { name:'Selûne', title:'The Moonmaiden', color:'#C8D8F0', associatedMonth:null, synodicPeriod:30.4375 }
     ]
   },
 
-  // =========================================================================
-  // GREGORIAN — Luna (Earth's moon)
-  // =========================================================================
-  // Standard astronomical reference. Synodic period 29.53059 days.
-  // Anchor: full moon on January 28, 2021 (a known astronomical full moon).
-  // Albedo 0.12, diameter 2159 miles, distance 238855 miles.
   gregorian: {
-    id: 'gregorian',
-    name: 'Earth',
-    description: "Luna, Earth's moon. Standard synodic period 29.53059 days.",
     moons: [
-      { name:'Luna', title:'The Moon', color:'#DCDCDC', associatedMonth:null,
-        synodicPeriod:29.53059, diameter:2159, distance:238855,
-        inclination:5.14, eccentricity:0.0549, albedo:0.12,
-        epochSeed:{ defaultSeed:'luna', referenceDate:{year:2021,month:1,day:28} },
-        loreNote:'Earth\'s natural satellite. Synodic period 29.53 days. Governs tides and has inspired mythology across all human cultures.' }
+      { name:'Luna', title:'The Moon', color:'#DCDCDC', associatedMonth:null, synodicPeriod:29.53059 }
     ]
   },
 
-  // =========================================================================
-  // GREYHAWK — Luna and Celene (moons of Oerth)
-  // =========================================================================
   greyhawk: {
-    id: 'greyhawk',
-    name: 'Oerth',
-    description: "Luna (28-day cycle) and Celene (91-day cycle), the two moons of Oerth.",
     moons: [
-      { name:'Luna', title:'The Great Moon', color:'#F5F5DC', associatedMonth:null,
-        synodicPeriod:28, loreNote:'Oerth\'s larger moon. Its 28-day cycle aligns perfectly with the calendar months.' },
-      { name:'Celene', title:'The Handmaiden', color:'#B0E0E6', associatedMonth:null,
-        synodicPeriod:91, loreNote:'Oerth\'s smaller, aquamarine-hued moon. Its 91-day cycle is watched by druids and astrologers.' }
+      { name:'Luna',   title:'The Great Moon', color:'#F5F5DC', associatedMonth:null, synodicPeriod:28 },
+      { name:'Celene', title:'The Handmaiden', color:'#B0E0E6', associatedMonth:null, synodicPeriod:91 }
     ]
   },
 
-  // =========================================================================
-  // DRAGONLANCE — Three moons of Krynn
-  // =========================================================================
   dragonlance: {
-    id: 'dragonlance',
-    name: 'Krynn',
-    description: "Solinari, Lunitari, and Nuitari — the three moons of Krynn that govern magic.",
     moons: [
-      { name:'Solinari', title:'The Silver Moon', color:'#E8E8E8', associatedMonth:null,
-        synodicPeriod:36, loreNote:'Solinari governs Good magic on Krynn. Its 36-day cycle determines the power of White Robed wizards.' },
-      { name:'Lunitari', title:'The Red Moon', color:'#CD5C5C', associatedMonth:null,
-        synodicPeriod:28, loreNote:'Lunitari governs Neutral magic on Krynn. Its 28-day cycle matches the calendar months.' },
-      { name:'Nuitari', title:'The Black Moon', color:'#1A1A2E', associatedMonth:null,
-        synodicPeriod:8, loreNote:'Nuitari governs Evil magic on Krynn. Its rapid 8-day cycle is invisible to all but those who serve darkness.' }
+      { name:'Solinari', title:'The Silver Moon', color:'#E8E8E8', associatedMonth:null, synodicPeriod:36 },
+      { name:'Lunitari', title:'The Red Moon',    color:'#CD5C5C', associatedMonth:null, synodicPeriod:28 },
+      { name:'Nuitari',  title:'The Black Moon',  color:'#1A1A2E', associatedMonth:null, synodicPeriod:8 }
     ]
   },
 
-  // =========================================================================
-  // EXANDRIA — Catha and Ruidus
-  // =========================================================================
   exandria: {
-    id: 'exandria',
-    name: 'Exandria',
-    description: "Catha (the guiding light) and Ruidus (the bloody eye) — the moons of Exandria.",
     moons: [
-      { name:'Catha', title:'The Guiding Light', color:'#F0E6D6', associatedMonth:null,
-        synodicPeriod:29, loreNote:'Catha is Exandria\'s primary moon, associated with the Moonweaver, Sehanine.' },
-      { name:'Ruidus', title:'The Bloody Eye', color:'#8B0000', associatedMonth:null,
-        synodicPeriod:164, loreNote:'Ruidus is a small reddish-purple moon shrouded in mystery. It appears full when visible and is considered an ill omen.' }
+      { name:'Catha',  title:'The Guiding Light', color:'#F0E6D6', associatedMonth:null, synodicPeriod:29 },
+      { name:'Ruidus', title:'The Bloody Eye',    color:'#8B0000', associatedMonth:null, synodicPeriod:164 }
     ]
   },
 
-  // =========================================================================
-  // MYSTARA — Matera and Patera
-  // =========================================================================
   mystara: {
-    id: 'mystara',
-    name: 'Mystara',
-    description: "Matera (visible) and Patera (invisible) — the moons of Mystara.",
     moons: [
-      { name:'Matera', title:'The Visible Moon', color:'#F5F5DC', associatedMonth:null,
-        synodicPeriod:28, loreNote:'Matera is the primary visible moon of Mystara. Its 28-day cycle governs tides and is the basis of the common month.' },
-      { name:'Patera', title:'The Invisible Moon', color:'#4A4A6A', associatedMonth:null,
-        synodicPeriod:32, loreNote:'Patera is the invisible moon of Mystara, home to the Ee\'aar. Only visible to those with special sight or powerful magic.' }
+      { name:'Matera', title:'The Visible Moon',   color:'#F5F5DC', associatedMonth:null, synodicPeriod:28 },
+      { name:'Patera', title:'The Invisible Moon', color:'#4A4A6A', associatedMonth:null, synodicPeriod:32 }
     ]
   },
 
-  // =========================================================================
-  // BIRTHRIGHT — Aelies (single moon of Aebrynis)
-  // =========================================================================
   birthright: {
-    id: 'birthright',
-    name: 'Aebrynis',
-    description: "Aelies, the silver moon of Aebrynis. 32-day cycle matching the Cerilian months.",
     moons: [
-      { name:'Aelies', title:'The Silver Moon', color:'#C0C0C0', associatedMonth:null,
-        synodicPeriod:32, loreNote:'Aelies is the single moon of Aebrynis. Its 32-day cycle matches the regular months of the Cerilian calendar.' }
+      { name:'Aelies', title:'The Silver Moon', color:'#C0C0C0', associatedMonth:null, synodicPeriod:32 }
     ]
   }
 };
@@ -355,35 +111,16 @@ export function _getMoonSys(sysKeyOverride?){
       });
     }
     return {
-      id: (legacy && legacy.id) || key,
-      name: (legacy && legacy.name) || world.label,
-      description: (legacy && legacy.description) || world.description,
       moons: world.moons.bodies.map(function(body: any){
         var prior = legacyByName[body.name] || {};
-        var mergedData = Object.assign({}, prior.data || {}, body.data || {});
-        return Object.assign({}, prior, mergedData, body, {
+        return Object.assign({}, prior, body, {
           key: body.key || prior.key || String(body.name || '').toLowerCase(),
           name: body.name || prior.name,
           title: body.title || prior.title,
           color: body.color || prior.color,
           associatedMonth: body.associatedMonth == null ? (prior.associatedMonth == null ? null : prior.associatedMonth) : body.associatedMonth,
-          synodicPeriod: Number(body.synodicPeriod || body.baseCycleDays || prior.synodicPeriod || prior.baseCycleDays || 28),
-          siderealPeriod: body.siderealPeriod || prior.siderealPeriod || null,
-          baseCycleDays: Number(body.baseCycleDays || body.synodicPeriod || prior.baseCycleDays || prior.synodicPeriod || 28),
-          phaseMode: body.phaseMode || prior.phaseMode || 'standard_phase',
-          cycleMode: body.cycleMode || prior.cycleMode || 'fixed',
-          visibilityMode: body.visibilityMode || prior.visibilityMode || 'normal',
-          cycleFormula: body.cycleFormula || prior.cycleFormula || null,
-          diameter: body.diameter || prior.diameter,
-          distance: body.distance || prior.distance,
-          inclination: body.inclination || prior.inclination,
-          eccentricity: body.eccentricity || prior.eccentricity,
-          albedo: body.albedo || prior.albedo,
-          epochSeed: body.epochSeed || prior.epochSeed || mergedData.epochSeed || null,
-          orbitalData: body.orbitalData || prior.orbitalData || mergedData.orbitalData || null,
-          motionTuning: body.motionTuning || prior.motionTuning || mergedData.motionTuning || null,
-          fixedAnchor: body.fixedAnchor || prior.fixedAnchor || mergedData.fixedAnchor || null,
-          data: mergedData
+          synodicPeriod: Number(body.synodicPeriod || body.baseCycleDays || prior.synodicPeriod || 28),
+          baseCycleDays: Number(body.baseCycleDays || body.synodicPeriod || prior.synodicPeriod || 28)
         });
       })
     };
