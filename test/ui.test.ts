@@ -1,7 +1,8 @@
 import { describe, it } from "node:test";
 import { ok as assert, strictEqual as assertEquals } from "node:assert/strict";
-import { freshInstall } from "./helpers.js";
+import { completeSetup, freshInstall } from "./helpers.js";
 import { _showDefaultCalView } from "../src/commands.js";
+import { handleInput } from "../src/boot-register.js";
 import { setDate, stepDays } from "../src/ui.js";
 import { sendToAll, sendUiToGM } from "../src/messaging.js";
 import { helpRootMenu } from "../src/ui.js";
@@ -40,15 +41,35 @@ describe("Task-focused UI", () => {
     assert(!msg.msg.includes("Prompt !cal send"));
   });
 
+  it("!cal additional renders the §5.4 subsystem hub whispered to caller", () => {
+    freshInstall();
+    completeSetup();
+    handleInput({ type: "api", content: "!cal additional", who: "GM (GM)", playerid: "GM" } as any);
+    const msg = (globalThis as any)._chatLog.slice(-1)[0];
+    // Hub is a single whispered card with subsystem launchers + Back.
+    // Per PR 2d-a it carries one button per subsystem (Events / Moons /
+    // Planes); 2d-b/c splits each into Current / All variants.
+    assert(/Additional/.test(msg.msg), "title bar should say Additional");
+    assert(/events panel/.test(msg.msg), "should launch Events");
+    assert(/!cal moon\b/.test(msg.msg) || />🌙 Moons</.test(msg.msg), "should launch Moons");
+    assert(/!cal planes\b/.test(msg.msg) || />🌀 Planes</.test(msg.msg), "should launch Planes for Eberron");
+    assert(/Back/.test(msg.msg), "should have a Back button");
+  });
+
   it("uses the current-month minical as the default root view", () => {
     freshInstall();
     _showDefaultCalView({ who: "GM (GM)", playerid: "GM" } as any);
     const msg = (globalThis as any)._chatLog.slice(-1)[0];
     assert(msg.msg.includes("Today&#39;s Calendar"));
-    assert(msg.msg.includes("Subsystems"));
-    assert(msg.msg.includes("retreat 1") || msg.msg.includes("⬅"), "should have retreat/back button");
-    assert(msg.msg.includes("advance 1") || msg.msg.includes("➡"), "should have advance/forward button");
-    assert(msg.msg.includes("send"), "should have send-to-players action");
+    // §5.2 button rows: GM row [Retreat | Advance | Send] above
+    // public row [Additional | Help]. The legacy "Subsystems"
+    // dropdown was replaced by the explicit Additional button in
+    // PR 2d-a; "Help" is the typed-only reference card.
+    assert(msg.msg.includes("Additional"), "should have Additional hub button");
+    assert(msg.msg.includes("Help"), "should have Help button");
+    assert(msg.msg.includes("retreat 1"), "should have GM retreat button");
+    assert(msg.msg.includes("advance 1"), "should have GM advance button");
+    assert(msg.msg.includes("!cal send") || /Send[^A-Za-z]/.test(msg.msg), "should have GM send button");
   });
 
   it("redraws the dashboard minical after day advance", () => {
