@@ -7,7 +7,7 @@ import { _invalidateSerialCache } from './date-math.js';
 import { DaySpec, Parse } from './parsing.js';
 import { compareEvents, currentDefaultKeySet, defaultKeyFor, mergeInNewDefaultEvents } from './events.js';
 import { clamp } from './rendering.js';
-import { _defaultDetailsForKey, _getSeasonLabel, sendCurrentDate } from './ui.js';
+import { _getSeasonLabel, sendCurrentDate } from './ui.js';
 
 
 /* ============================================================================

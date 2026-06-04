@@ -6,7 +6,6 @@ import { applyCalendarSystem, getCal, ensureSettings, getManualSuppressedSources
 import { getEventsFor, eventKey, compareEvents, getEventColor, isDefaultEvent } from "../src/events.js";
 import { _stableHash, sanitizeHexColor, resolveColor, textColor, _relLum, _contrast } from "../src/color.js";
 import { clamp, esc } from "../src/rendering.js";
-import { addEventSmart, removeEvent } from "../src/ui.js";
 
 // ============================================================================
 // 4) EVENTS
