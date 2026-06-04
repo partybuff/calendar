@@ -216,7 +216,9 @@ clearChat();
 
 const rootEntries = sendApi('!cal');
 assertChatIncludes(rootEntries, "Today&#39;s Calendar", 'Root command should render the main dashboard after setup.');
-assertChatIncludes(rootEntries, 'Subsystems', 'Root command should render the main dashboard after setup.');
+// §5.2: legacy "Subsystems" dropdown replaced by Additional + Help buttons.
+assertChatIncludes(rootEntries, 'Additional', 'Root command should render the Additional hub button.');
+assertChatIncludes(rootEntries, 'Help', 'Root command should render the Help button.');
 
 const moonEntries = sendApi('!cal moon');
 assertChatIncludes(moonEntries, 'Moon', 'Moon command should render lunar output.');
