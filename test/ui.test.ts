@@ -50,10 +50,35 @@ describe("Task-focused UI", () => {
     // Per PR 2d-a it carries one button per subsystem (Events / Moons /
     // Planes); 2d-b/c splits each into Current / All variants.
     assert(/Additional/.test(msg.msg), "title bar should say Additional");
-    assert(/events panel/.test(msg.msg), "should launch Events");
+    // PR 2d-b: Events button split into Current / All variants.
+    assert(/events current/.test(msg.msg), "should launch Events Current");
+    assert(/events all/.test(msg.msg), "should launch Events All");
     assert(/!cal moon\b/.test(msg.msg) || />🌙 Moons</.test(msg.msg), "should launch Moons");
     assert(/!cal planes\b/.test(msg.msg) || />🌀 Planes</.test(msg.msg), "should launch Planes for Eberron");
     assert(/Back/.test(msg.msg), "should have a Back button");
+  });
+
+  it("!cal events current emits Past | Today | Upcoming sections with Back to additional", () => {
+    freshInstall();
+    completeSetup();
+    handleInput({ type: "api", content: "!cal events current", who: "GM (GM)", playerid: "GM" } as any);
+    const msg = (globalThis as any)._chatLog.slice(-1)[0];
+    assert(/Events . Current/.test(msg.msg) || />Events . Current</.test(msg.msg) || /Events &mdash; Current/.test(msg.msg) || /Events.*Current/.test(msg.msg), "title should be Events — Current");
+    assert(/>Past</.test(msg.msg), "should have Past section");
+    assert(/>Today</.test(msg.msg), "should have Today section");
+    assert(/>Upcoming</.test(msg.msg), "should have Upcoming section");
+    assert(/!cal additional/.test(msg.msg), "Back button should route to additional");
+  });
+
+  it("!cal events all defaults to the current year and surfaces year nav", () => {
+    freshInstall();
+    completeSetup();
+    handleInput({ type: "api", content: "!cal events all", who: "GM (GM)", playerid: "GM" } as any);
+    const msg = (globalThis as any)._chatLog.slice(-1)[0];
+    assert(/Events . 998|Events &mdash; 998|Events.*998/.test(msg.msg), "title should include the default year 998 YK");
+    assert(/events all 997/.test(msg.msg), "should have previous-year button");
+    assert(/events all 999/.test(msg.msg), "should have next-year button");
+    assert(/!cal additional/.test(msg.msg), "Back button should route to additional");
   });
 
   it("uses the current-month minical as the default root view", () => {
