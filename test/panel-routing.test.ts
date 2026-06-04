@@ -55,23 +55,11 @@ describe("Redesigned panel routing", () => {
     assert(!msg.includes("send ?{Calendar range|this month}"));
   });
 
-  it("opens Source Controls and the real list workflow from Events management", () => {
-    freshInstall();
-    completeSetup();
-
-    handleInput(gmMessage("!cal events manage source"));
-    let msg = String(lastChat().msg);
-    assert(msg.includes("Manage Event Sources"));
-    assert(msg.includes("source"));
-
-    handleInput(gmMessage("!cal events manage list"));
-    msg = String(lastChat().msg);
-    assert(msg.includes(">Status<"));
-    assert(msg.includes("Source"));
-    assert(!msg.includes(">Index<"));
-    assert(msg.includes("[\u2796 Hide](!cal remove "));
-    assert(!msg.includes("events removeflow"));
-  });
+  // Removed: "opens Source Controls and the real list workflow from
+  // Events management" \u2014 exercised `!cal events manage source` and
+  // `!cal events manage list`, both retired with the GM event-management
+  // family. Events are canon-pack only per DESIGN.md \u00a71; configuration
+  // flows through `!cal token` from the web app.
 
   it("routes Today additional-options Admin into the GM menu without undefined output", () => {
     freshInstall();
@@ -101,52 +89,13 @@ describe("Redesigned panel routing", () => {
     assert(!msg.includes("[\uD83D\uDCC5 Show]"));
   });
 
-  it("shows hide/show controls directly in the event list", () => {
-    freshInstall();
-    completeSetup();
-
-    handleInput(gmMessage("!cal list"));
-    let msg = String(lastChat().msg);
-    assert(msg.includes(">Status<"));
-    assert(msg.includes("Source"));
-    assert(!msg.includes(">Index<"));
-    assert(msg.includes("[\u2796 Hide](!cal remove "));
-
-    const evt = getCal().events.find((entry: any) => entry.source === "khorvaire");
-    assert(evt);
-    handleInput(gmMessage("!cal remove key " + encodeURIComponent(eventKey(evt))));
-    handleInput(gmMessage("!cal list"));
-
-    msg = String(lastChat().msg);
-    assert(msg.includes("Hidden"));
-    assert(msg.includes("[\u2795 Show](!cal restore key "));
-  });
-
-  it("treats source controls as bulk hide/show for the shared event list", () => {
-    freshInstall();
-    completeSetup();
-
-    const evt = getCal().events.find((entry: any) => entry.name === "Day of Cleansing Fire" && entry.source === "silver flame");
-    assert(evt);
-    const key = encodeURIComponent(eventKey(evt));
-
-    handleInput(gmMessage("!cal source disable Silver Flame"));
-    handleInput(gmMessage("!cal list"));
-
-    let msg = String(lastChat().msg);
-    assert(msg.includes("Day of Cleansing Fire"));
-    assert(msg.includes("#F2F7FF"));
-    assert(msg.includes("Silver Flame"));
-    assert(msg.includes("restore key "));
-
-    handleInput(gmMessage("!cal restore key " + key));
-    handleInput(gmMessage("!cal source list"));
-
-    msg = String(lastChat().msg);
-    assert(msg.includes("Partially Hidden"));
-    assert(msg.includes("[Show All](!cal source enable Silver Flame"));
-    assert(msg.includes("[Hide All](!cal source disable Silver Flame"));
-  });
+  // Removed: "shows hide/show controls directly in the event list" and
+  // "treats source controls as bulk hide/show for the shared event
+  // list" \u2014 both exercised `!cal list` / `!cal remove key` / `!cal
+  // restore key`, the GM event-management surface retired in this PR.
+  // The source-pack toggle (`!cal source disable/enable Silver Flame`)
+  // still exists as a separate GM tool, but its end-to-end coupling
+  // with the event list is gone.
 
   it("builds viewed-date Additional Ranges commands for events and renders year, rolling, month, and specific ranges", () => {
     freshInstall();
