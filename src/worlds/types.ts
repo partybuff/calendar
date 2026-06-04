@@ -180,10 +180,7 @@ export type EventPackDefinition = {
 
 export type WorldCapabilities = {
   moons: boolean;
-  weather: boolean;
   planes: boolean;
-  defaultEvents: boolean;
-  worldHooks: boolean;
 };
 
 export type WorldHooks = {

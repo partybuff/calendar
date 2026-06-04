@@ -244,7 +244,7 @@ const eberronOverlay: WrapperOverlay = {
     },
   ],
 
-  capabilities: { moons: true, weather: true, planes: true, defaultEvents: true, worldHooks: true },
+  capabilities: { moons: true, planes: true },
   setup: {},
 };
 
@@ -305,7 +305,7 @@ const faerunOverlay: WrapperOverlay = {
     },
   ],
   defaultSeasonKey: 'faerun',
-  capabilities: { moons: true, weather: true, planes: false, defaultEvents: false, worldHooks: false },
+  capabilities: { moons: true, planes: false },
   setup: {},
 };
 
@@ -382,7 +382,7 @@ const gregorianOverlay: WrapperOverlay = {
       ],
     },
   ],
-  capabilities: { moons: true, weather: true, planes: false, defaultEvents: true, worldHooks: false },
+  capabilities: { moons: true, planes: false },
   setup: {},
 };
 
@@ -451,7 +451,7 @@ const greyhawkOverlay: WrapperOverlay = {
       ],
     },
   ],
-  capabilities: { moons: true, weather: true, planes: false, defaultEvents: true, worldHooks: false },
+  capabilities: { moons: true, planes: false },
   setup: {},
 };
 
@@ -540,7 +540,7 @@ const dragonlanceOverlay: WrapperOverlay = {
       ],
     },
   ],
-  capabilities: { moons: true, weather: true, planes: false, defaultEvents: true, worldHooks: true },
+  capabilities: { moons: true, planes: false },
   setup: {
     extraSteps: [
       {
@@ -614,7 +614,7 @@ const exandriaOverlay: WrapperOverlay = {
       ],
     },
   ],
-  capabilities: { moons: true, weather: true, planes: false, defaultEvents: true, worldHooks: false },
+  capabilities: { moons: true, planes: false },
   setup: {},
 };
 
@@ -678,7 +678,7 @@ const mystaraOverlay: WrapperOverlay = {
       ],
     },
   ],
-  capabilities: { moons: true, weather: true, planes: false, defaultEvents: true, worldHooks: false },
+  capabilities: { moons: true, planes: false },
   setup: {},
 };
 
@@ -744,7 +744,7 @@ const birthrightOverlay: WrapperOverlay = {
       ],
     },
   ],
-  capabilities: { moons: true, weather: true, planes: false, defaultEvents: true, worldHooks: false },
+  capabilities: { moons: true, planes: false },
   setup: {},
 };
 
