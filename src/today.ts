@@ -10,8 +10,8 @@ import { _deliverAdditionalCalendarRange, _deliverTopLevelCalendarRange, buildAd
 import { button, clamp, esc, listAllEventsTableHtml, _monthRangeFromSerial, removeListHtml, removeMatchesListHtml, restoreDefaultEvents, suppressedDefaultsListHtml } from './rendering.js';
 import { _displayMonthDayParts, _menuBox, _serialToDateSpec, _shiftSerialByMonth, activeEffectsPanelHtml, addEventSmart, addMonthlySmart, addYearlySmart, calendarSystemListHtml, currentDateLabel, formalCurrentDateLabel, helpCalendarSystemMenu, helpEventColorsMenu, helpRootMenu, helpSeasonsMenu, helpThemesMenu, nextForDayOnly, removeEvent, seasonSetListHtml, sendCurrentDate, setDate, stepDays, taskCardHtml, themeListHtml } from './ui.js';
 import { _normalizePackedWords, _playerTodayHtml, _showDefaultCalView, runEventsShortcut, send, whisper, whisperUi } from './commands.js';
-import { MOON_SYSTEMS, _getMoonSys, _moonPeakPhaseDay, _moonPhaseEmoji, _moonPhaseLabel, handleMoonCommand, invalidateMoonModel, moonEnsureSequences } from './moon.js';
-import { _planarNotableToday, getPlanarState, _getAllPlaneData, handlePlanesCommand } from './planes.js';
+import { _getMoonSys, _moonPeakPhaseDay, handleMoonCommand, invalidateMoonModel, moonEnsureSequences } from './moon.js';
+import { getPlanarState, _getAllPlaneData, handlePlanesCommand } from './planes.js';
 
 
 // ── Today — Combined detail from all subsystems ────────────────────────
