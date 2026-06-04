@@ -183,12 +183,10 @@ export function _shiftSerialByMonth(serial, dir){
 }
 
 export function _playerButtonsHtml(){
-  var out = [];
-  var st = ensureSettings();
-  out.push('<div>'+button('Previous','show previous month')+' '+button('Next','show next month')+'</div>');
-  if (st.moonsEnabled   !== false) out.push('<div>'+button('🌙 Moons','moon')+'</div>');
-  if (st.planesEnabled  !== false) out.push('<div>'+button('🌀 Planes','planes')+'</div>');
-  return out.join('');
+  // §5.2 public row. Same buttons whether caller is player or GM; the GM
+  // row in `gmButtonsHtml` adds Retreat / Advance / Send above this.
+  // Players clicking these still get a whispered reply targeted to them.
+  return '<div>' + button('Additional','additional') + ' ' + button('Help','help') + '</div>';
 }
 
 export function sendCurrentDate(to, gmOnly, opts?){
@@ -748,18 +746,46 @@ export function taskCardHtml(title, summary, actions?, detail?){
 }
 
 export function gmButtonsHtml(){
+  // §5.2 layout: GM row (Retreat / Advance / Send) above the public row
+  // (Additional / Help). Single-day steps; multi-day stepping goes
+  // through `!cal advance N` / `!cal retreat N` from chat.
   var rows = [];
-
-  // Date step arrows
-  rows.push('<div>'+mb('Back','retreat 1')+' '+mb('Forward','advance 1')+'</div>');
-
-  // Send Today View to Players
-  rows.push('<div>'+mb('📣 Send To Players','send')+'</div>');
-
-  // Subsystems dropdown
-  rows.push('<div>'+mb('Subsystems','today options ?{Subsystem|Events,events|Moons,moon|Planes,planes|Admin,admin}')+'</div>');
-
+  rows.push('<div>' + mb('Retreat','retreat 1') + ' ' + mb('Advance','advance 1') + ' ' + mb('Send','send') + '</div>');
+  rows.push(_playerButtonsHtml());
   return rows.join('');
+}
+
+/**
+ * §5.4 Additional hub — whisper-only subsystem launcher.
+ *
+ * Per DESIGN.md §5.5 the eventual layout is six buttons:
+ *   [Events Current]  [Events All]
+ *   [Lunar Current]   [Lunar All]
+ *   [Planar Current]  [Planar All]   (Eberron only)
+ *                                    [← Back]
+ *
+ * This file ships the foundation: subsystem-level buttons that route
+ * to the existing handlers (`!cal events panel`, `!cal moon`,
+ * `!cal planes`). The Current/All split lands in PR 2d-b and 2d-c
+ * once each subsystem has distinct panels to render.
+ *
+ * `planesEnabled` and `moonsEnabled` flags suppress their respective
+ * buttons. Planar is also suppressed on non-Eberron worlds since the
+ * engine only ships canon planar data for Eberron.
+ */
+export function additionalHubHtml(){
+  var st = ensureSettings();
+  var sysKey = String(st.calendarSystem || '').toLowerCase();
+  var rows = [];
+  rows.push('<div>' + button('Events','events panel') + '</div>');
+  if (st.moonsEnabled !== false){
+    rows.push('<div>' + button('🌙 Moons','moon') + '</div>');
+  }
+  if (st.planesEnabled !== false && sysKey === 'eberron'){
+    rows.push('<div>' + button('🌀 Planes','planes') + '</div>');
+  }
+  rows.push('<div style="margin-top:6px;">' + button('⬅️ Back','') + '</div>');
+  return _menuBox('Additional', rows.join(''));
 }
 
 export function activeEffectsPanelHtml(){
