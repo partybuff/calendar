@@ -7,7 +7,7 @@ import { _daysBeforeMonthInYear, _daysBeforeYear, _invalidateSerialCache, _isGre
 import { monthIndexByName } from './parsing.js';
 import { compareEvents, eventKey, eventsAPI, getEventColor, getEventsFor, isDefaultEvent, renderAPI } from './events.js';
 import { _ordinal, clamp, esc, formatDateLabel } from './rendering.js';
-import { _displayMonthDayParts, _subsystemIsVerbose, _subsystemVerbosityValue, addEventSmart, currentDateLabel, removeEvent, setDate, stepDays } from './ui.js';
+import { _displayMonthDayParts, _subsystemIsVerbose, _subsystemVerbosityValue, currentDateLabel, setDate, stepDays } from './ui.js';
 import { _todayAllHtml } from './today.js';
 import { notifySetupStatusOnReady } from './setup.js';
 import { register } from './boot-register.js';
@@ -77,8 +77,6 @@ if (typeof globalThis !== 'undefined' && (globalThis as any).__CALENDAR_TEST_MOD
 
     // events
     getEventsFor:        getEventsFor,
-    addEventSmart:       addEventSmart,
-    removeEvent:         removeEvent,
     eventKey:            eventKey,
     compareEvents:       compareEvents,
     getEventColor:       getEventColor,

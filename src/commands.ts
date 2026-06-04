@@ -5,7 +5,6 @@ import { todaySerial } from './date-math.js';
 import { eventDisplayName, occurrencesInRange } from './events.js';
 import { button, esc } from './rendering.js';
 import { _displayMonthDayParts, _menuBox, currentDateLabel, sendCurrentDate, taskCardHtml } from './ui.js';
-import { invokeEventSub } from './today.js';
 import { _getMoonSys, _moonPeakPhaseDay, moonEnsureSequences } from './moon.js';
 import { _planesTodaySummaryHtml } from './planes.js';
 import { whisper } from './messaging.js';
@@ -29,11 +28,6 @@ export function _normalizePackedWords(q){
     .replace(/\b(next[-_]month)\b/gi,'next month')
     .replace(/\b(next[-_]year)\b/gi,'next year')
     .trim();
-}
-
-export function runEventsShortcut(m, a, sub){
-  var args = a.slice(2);
-  return invokeEventSub(m, String(sub||'list').toLowerCase(), args);
 }
 
 // Default !cal entrypoint routing:
