@@ -8,10 +8,11 @@ import { _invalidateSerialCache, _isLeapMonth, fromSerial, toSerial, todaySerial
 import { DaySpec, Parse } from './parsing.js';
 import { _deliverAdditionalCalendarRange, _deliverTopLevelCalendarRange, buildAdditionalRangesCommand, buildCalendarsHtmlForSpec, defaultKeyFor, eventDisplayName, getEventColor, mergeInNewDefaultEvents, occurrencesInRange } from './events.js';
 import { button, clamp, esc, eventLineHtml, listAllEventsTableHtml, _monthRangeFromSerial, removeListHtml, removeMatchesListHtml, restoreDefaultEvents, suppressedDefaultsListHtml } from './rendering.js';
-import { _displayMonthDayParts, _menuBox, _serialToDateSpec, _shiftSerialByMonth, activeEffectsPanelHtml, addEventSmart, addMonthlySmart, addYearlySmart, additionalHubHtml, calendarSystemListHtml, currentDateLabel, formalCurrentDateLabel, helpCalendarSystemMenu, helpEventColorsMenu, helpRootMenu, helpSeasonsMenu, helpThemesMenu, nextForDayOnly, removeEvent, seasonSetListHtml, sendCurrentDate, setDate, stepDays, taskCardHtml, themeListHtml } from './ui.js';
+import { _displayMonthDayParts, _menuBox, _serialToDateSpec, _shiftSerialByMonth, activeEffectsPanelHtml, addEventSmart, addMonthlySmart, addYearlySmart, additionalHubHtml, calendarSystemListHtml, currentDateLabel, dateLabelFromSerial, formalCurrentDateLabel, helpCalendarSystemMenu, helpEventColorsMenu, helpRootMenu, helpSeasonsMenu, helpThemesMenu, nextForDayOnly, removeEvent, seasonSetListHtml, sendCurrentDate, setDate, stepDays, taskCardHtml, themeListHtml } from './ui.js';
 import { _normalizePackedWords, _playerTodayHtml, _showDefaultCalView, runEventsShortcut, send, whisper, whisperUi } from './commands.js';
-import { _getMoonSys, _moonPeakPhaseDay, handleMoonCommand, invalidateMoonModel, moonEnsureSequences } from './moon.js';
-import { getPlanarState, _getAllPlaneData, handlePlanesCommand } from './planes.js';
+import { _getMoonSys, _moonLastEvent, _moonNextEvent, _moonPeakPhaseDay, _moonPhaseEmoji, _moonPhaseLabel, handleMoonCommand, invalidateMoonModel, moonEnsureSequences, moonPhaseAt } from './moon.js';
+import { getPlanarState, _getAllPlaneData, _getPlaneData, handlePlanesCommand } from './planes.js';
+import { enginePlanes, getPlanePositions, serialToCalendarDate } from './engine-opts.js';
 
 
 // ── Today — Combined detail from all subsystems ────────────────────────
@@ -460,6 +461,351 @@ function _eventsAllHtml(year){
   var back = '<div style="margin-top:6px;">' + button('⬅️ Back', 'additional') + '</div>';
 
   return _menuBox('Events — ' + esc(String(year)), sections.join('') + nav + back);
+}
+
+// ── §5.5 Lunar Current ───────────────────────────────────────────────────
+//
+// One row per moon. Columns:
+//   • Name + active phase emoji
+//   • Phase label
+//   • Synodic period (cycle days)
+//   • Last full / new (whichever was more recent), with date
+//   • Next full / new (whichever sooner), with day countdown
+function _lunarCurrentHtml(){
+  var sys = _getMoonSys();
+  if (!sys || !sys.moons || !sys.moons.length){
+    return _menuBox('Lunar — Current',
+      '<div style="opacity:.7;">No moon data for this calendar system.</div>' +
+      '<div style="margin-top:8px;">' + button('⬅️ Back', 'additional') + '</div>'
+    );
+  }
+  var today = todaySerial();
+
+  var rows = sys.moons.map(function(moon){
+    var ph = moonPhaseAt(moon.name, today);
+    var emoji = _moonPhaseEmoji(ph.illum, ph.waxing);
+    var label = ph.label || _moonPhaseLabel(ph.illum, ph.waxing);
+    var period = moon.synodicPeriod || moon.baseCycleDays || null;
+
+    // Most recent inflection (full or new), whichever was more recent.
+    var lastFull = _moonLastEvent(moon.name, today, 'full');
+    var lastNew = _moonLastEvent(moon.name, today, 'new');
+    var lastSer = null, lastType = null;
+    if (lastFull != null && (lastNew == null || lastFull >= lastNew)){
+      lastSer = lastFull; lastType = 'Full';
+    } else if (lastNew != null){
+      lastSer = lastNew; lastType = 'New';
+    }
+    var lastTxt = (lastSer != null)
+      ? esc(lastType + ' on ' + dateLabelFromSerial(lastSer))
+      : '<span style="opacity:.55;">no recent event</span>';
+
+    // Next inflection.
+    var nextFull = _moonNextEvent(moon.name, today, 'full');
+    var nextNew = _moonNextEvent(moon.name, today, 'new');
+    var nextSer = null, nextType = null;
+    if (nextFull != null && (nextNew == null || nextFull <= nextNew)){
+      nextSer = nextFull; nextType = 'Full';
+    } else if (nextNew != null){
+      nextSer = nextNew; nextType = 'New';
+    }
+    var nextTxt;
+    if (nextSer != null){
+      var days = nextSer - today;
+      var dLbl = days === 1 ? '1 day' : (days + ' days');
+      nextTxt = esc(nextType + ' in ' + dLbl + ' (' + dateLabelFromSerial(nextSer) + ')');
+    } else {
+      nextTxt = '<span style="opacity:.55;">no upcoming event</span>';
+    }
+
+    var dot = moon.color
+      ? '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:' + esc(String(moon.color)) + ';margin-right:4px;"></span>'
+      : '';
+    return '<div style="margin:6px 0;">' +
+      '<div>' + dot + esc(emoji + ' ') + '<b>' + esc(moon.name) + '</b> &mdash; ' + esc(label) +
+        (period ? ' <span style="opacity:.65;">(cycle ' + esc(String(period)) + 'd)</span>' : '') +
+        '</div>' +
+      '<div style="font-size:.85em;opacity:.85;margin-left:14px;">Last: ' + lastTxt + '</div>' +
+      '<div style="font-size:.85em;opacity:.85;margin-left:14px;">Next: ' + nextTxt + '</div>' +
+      '</div>';
+  });
+
+  var back = '<div style="margin-top:8px;">' + button('⬅️ Back', 'additional') + '</div>';
+  return _menuBox('Lunar — Current', rows.join('') + back);
+}
+
+// ── §5.5 Lunar All ───────────────────────────────────────────────────────
+//
+// Year listing organized by month section header, chronological within.
+// Mixes moons within a month — readers want "when does the sky have an
+// event" across all moons at once, not "what does Olarune do across the
+// year".
+function _lunarAllHtml(year){
+  var sys = _getMoonSys();
+  if (!sys || !sys.moons || !sys.moons.length){
+    return _menuBox('Lunar — ' + esc(String(year)),
+      '<div style="opacity:.7;">No moon data for this calendar system.</div>' +
+      '<div style="margin-top:8px;">' + button('⬅️ Back', 'additional') + '</div>'
+    );
+  }
+  var cal = getCal();
+  var months = cal.months;
+  var yearStart = toSerial(year, 0, 1);
+  var lastMi = months.length - 1;
+  var yearEnd = toSerial(year, lastMi, months[lastMi].days | 0);
+
+  // Walk forward across all moons accumulating (serial, moon, type)
+  // tuples. Engine `nextEvent` is closed-form so each call is cheap;
+  // we iterate per moon to avoid an O(year × moons) day scan.
+  var entries: { serial: number; moonName: string; moonColor: string; type: 'Full' | 'New' }[] = [];
+  for (var mi = 0; mi < sys.moons.length; mi++){
+    var moon = sys.moons[mi];
+    (['full', 'new'] as const).forEach(function(t){
+      var cursor = yearStart - 1;
+      while (true){
+        var next = _moonNextEvent(moon.name, cursor, t);
+        if (next == null || next > yearEnd) break;
+        entries.push({ serial: next, moonName: moon.name, moonColor: moon.color || '#888888', type: t === 'full' ? 'Full' : 'New' });
+        cursor = next;
+      }
+    });
+  }
+  entries.sort(function(a, b){ return a.serial - b.serial; });
+
+  // Bucket into structural-mi sections.
+  var byMonth: { [mi: string]: typeof entries } = {};
+  for (var i = 0; i < entries.length; i++){
+    var di = fromSerial(entries[i].serial);
+    var key = String(di.mi);
+    if (!byMonth[key]) byMonth[key] = [];
+    byMonth[key].push(entries[i]);
+  }
+
+  var sections = [];
+  for (var mi2 = 0; mi2 < months.length; mi2++){
+    var bucket = byMonth[String(mi2)] || [];
+    if (!bucket.length) continue;
+    var header = '<div style="font-weight:bold;font-size:.96em;margin:8px 0 3px 0;">' +
+      esc(months[mi2].name) + '</div>';
+    var rowsLA = bucket.map(function(x){
+      var di2 = fromSerial(x.serial);
+      var dot = '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:' + esc(x.moonColor) + ';margin-right:6px;"></span>';
+      var weight = (x.serial === todaySerial()) ? 'font-weight:bold;' : '';
+      return '<div style="margin:2px 0 2px 14px;font-size:.86em;' + weight + '">' + dot +
+        esc(String(di2.day)) + ' &mdash; ' + esc(x.moonName) + ' ' + esc(x.type) + '</div>';
+    });
+    sections.push(header + rowsLA.join(''));
+  }
+
+  if (!sections.length){
+    sections.push('<div style="font-size:.82em;opacity:.6;margin:4px 0;">No lunar events in ' + esc(String(year)) + '.</div>');
+  }
+
+  var prevY = button('◀ ' + (year - 1), 'lunar all ' + (year - 1));
+  var nextY = button((year + 1) + ' ▶', 'lunar all ' + (year + 1));
+  var nav = '<div style="margin:8px 0 0 0;">' + prevY + ' ' + nextY + '</div>';
+  var back = '<div style="margin-top:6px;">' + button('⬅️ Back', 'additional') + '</div>';
+
+  return _menuBox('Lunar — ' + esc(String(year)), sections.join('') + nav + back);
+}
+
+// ── §5.5 Planar Current ──────────────────────────────────────────────────
+//
+// Past | Today | Upcoming transitions, week-length spillover, explicit
+// month labels per line. Eberron-only.
+//
+// Transition line shapes (per DESIGN.md §5.5):
+//   phase-in:  "16 — Fernia Coterminous for 7 days"
+//   phase-out: "22 — Fernia Coterminous Ends"  (dimmer, no countdown)
+//
+// "Phase-in" means the transition is INTO a non-neutral phase
+// (coterminous or remote); the FROM side was neutral. "Phase-out"
+// means the transition is OUT of a non-neutral phase (TO side is
+// neutral); the FROM phase ends.
+function _planarCurrentHtml(){
+  var st = ensureSettings();
+  if (String(st.calendarSystem || '').toLowerCase() !== 'eberron'){
+    return _menuBox('Planar — Current',
+      '<div style="opacity:.7;">Planar canon is Eberron-only.</div>' +
+      '<div style="margin-top:8px;">' + button('⬅️ Back', 'additional') + '</div>'
+    );
+  }
+  var cal = getCal();
+  var c = cal.current;
+  var today = todaySerial();
+  var weekDays = Math.max(1, weekLength());
+
+  // Window: current month ± week-length spillover, same as events current.
+  var monthStart = toSerial(c.year, c.month, 1);
+  var monthEnd = toSerial(c.year, c.month, cal.months[c.month].days | 0);
+  var windowStart = monthStart - weekDays;
+  var windowEnd = monthEnd + weekDays;
+
+  // Engine returns transitions for upcoming(from, withinDays). We start
+  // at windowStart so past transitions fall inside the returned set.
+  var transitions: { plane: any; from: string; to: string; on: any }[] = [];
+  try {
+    var fromDate = serialToCalendarDate(windowStart);
+    var span = Math.max(1, windowEnd - windowStart);
+    transitions = (enginePlanes.upcoming(fromDate, span, getPlanePositions()) as any) || [];
+  } catch(_e){}
+
+  // Normalize each transition into a wrapper serial + line spec, then
+  // bucket past / today / upcoming.
+  function dateSerial(d: any){
+    return toSerial(d.year, _calendarDateMonthIndexFor(d), d.day || 1);
+  }
+  function lineHtml(t: any, isToday: boolean){
+    var ser = dateSerial(t.on);
+    var di = fromSerial(ser);
+    var monthName = cal.months[di.mi] ? cal.months[di.mi].name : '';
+    var planeName = t.plane && (t.plane.name || t.plane.key) || '';
+    var planeKey = String(t.plane && (t.plane.name || t.plane.key) || '');
+    var enriched = _getPlaneData(planeKey);
+    var color = (enriched && enriched.color) || '#888888';
+    var dot = '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:' + esc(color) + ';margin-right:6px;"></span>';
+    var label = esc(String(di.day) + ' ' + monthName) + ' &mdash; <b>' + esc(planeName) + '</b> ' +
+      esc(String(t.to).replace(/^./, function(c){return c.toUpperCase();}));
+    if (t.to === 'neutral'){
+      // Phase-out (going to neutral). Use the FROM phase name and dim
+      // the line; no countdown.
+      label = esc(String(di.day) + ' ' + monthName) + ' &mdash; <b>' + esc(planeName) + '</b> ' +
+        esc(String(t.from).replace(/^./, function(c){return c.toUpperCase();})) + ' Ends';
+      return '<div style="margin:2px 0;font-size:.86em;opacity:.55;' + (isToday ? 'font-weight:bold;' : '') + '">' + dot + label + '</div>';
+    }
+    // Phase-in. Look up phase duration via getPlanarState on the
+    // transition day so we can render "for N days".
+    var ps = getPlanarState(planeName, ser);
+    var dur = (ps && ps.phaseDuration) ? ps.phaseDuration : null;
+    var suffix = dur ? (' for ' + dur + ' day' + (dur === 1 ? '' : 's')) : '';
+    return '<div style="margin:2px 0;font-size:.86em;' + (isToday ? 'font-weight:bold;' : '') + '">' +
+      dot + label + esc(suffix) + '</div>';
+  }
+
+  var past: string[] = [], onToday: string[] = [], upcoming: string[] = [];
+  for (var i = 0; i < transitions.length; i++){
+    var t = transitions[i];
+    var ser = dateSerial(t.on);
+    var html = lineHtml(t, ser === today);
+    if (ser < today) past.push(html);
+    else if (ser === today) onToday.push(html);
+    else upcoming.push(html);
+  }
+
+  function bucketHtml(title: string, list: string[], emptyHint: string){
+    var header = '<div style="font-weight:bold;font-size:.92em;margin:6px 0 2px 0;opacity:.85;">' + esc(title) + '</div>';
+    if (!list.length) return header + '<div style="font-size:.82em;opacity:.6;margin:2px 0;">' + esc(emptyHint) + '</div>';
+    return header + list.join('');
+  }
+
+  var body = '';
+  body += bucketHtml('Past', past, 'No recent transitions.');
+  body += bucketHtml('Today', onToday, 'No transitions today.');
+  body += bucketHtml('Upcoming', upcoming, 'No upcoming transitions.');
+  body += '<div style="margin-top:8px;">' + button('⬅️ Back', 'additional') + '</div>';
+
+  return _menuBox('Planar — Current', body);
+}
+
+// ── §5.5 Planar All ──────────────────────────────────────────────────────
+//
+// Year listing by month with chronological transitions inside. Same
+// transition-line shapes as Planar Current; reuses the engine's
+// `upcoming` enumeration across the year. Eberron-only.
+function _planarAllHtml(year){
+  var st = ensureSettings();
+  if (String(st.calendarSystem || '').toLowerCase() !== 'eberron'){
+    return _menuBox('Planar — ' + esc(String(year)),
+      '<div style="opacity:.7;">Planar canon is Eberron-only.</div>' +
+      '<div style="margin-top:8px;">' + button('⬅️ Back', 'additional') + '</div>'
+    );
+  }
+  var cal = getCal();
+  var months = cal.months;
+  var yearStart = toSerial(year, 0, 1);
+  var lastMi = months.length - 1;
+  var yearEnd = toSerial(year, lastMi, months[lastMi].days | 0);
+  var today = todaySerial();
+
+  var transitions: { plane: any; from: string; to: string; on: any }[] = [];
+  try {
+    var fromDate = serialToCalendarDate(yearStart);
+    var span = Math.max(1, yearEnd - yearStart);
+    transitions = (enginePlanes.upcoming(fromDate, span, getPlanePositions()) as any) || [];
+  } catch(_e){}
+
+  // Group transitions by structural-mi.
+  var byMonth: { [mi: string]: any[] } = {};
+  for (var i = 0; i < transitions.length; i++){
+    var t = transitions[i];
+    var ser = toSerial(t.on.year, _calendarDateMonthIndexFor(t.on), t.on.day || 1);
+    var di = fromSerial(ser);
+    var key = String(di.mi);
+    if (!byMonth[key]) byMonth[key] = [];
+    byMonth[key].push({ t: t, serial: ser, di: di });
+  }
+
+  var sections = [];
+  for (var mi = 0; mi < months.length; mi++){
+    var bucket = byMonth[String(mi)] || [];
+    if (!bucket.length) continue;
+    var header = '<div style="font-weight:bold;font-size:.96em;margin:8px 0 3px 0;">' +
+      esc(months[mi].name) + '</div>';
+    var rowsPA = bucket.map(function(item){
+      var t = item.t;
+      var ser = item.serial;
+      var di = item.di;
+      var planeName = t.plane && (t.plane.name || t.plane.key) || '';
+      var enriched = _getPlaneData(String(planeName));
+      var color = (enriched && enriched.color) || '#888888';
+      var dot = '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:' + esc(color) + ';margin-right:6px;"></span>';
+      var weight = (ser === today) ? 'font-weight:bold;' : '';
+      if (t.to === 'neutral'){
+        return '<div style="margin:2px 0 2px 14px;font-size:.86em;opacity:.55;' + weight + '">' + dot +
+          esc(String(di.day)) + ' &mdash; <b>' + esc(planeName) + '</b> ' +
+          esc(String(t.from).replace(/^./, function(c){return c.toUpperCase();})) + ' Ends</div>';
+      }
+      var ps = getPlanarState(planeName, ser);
+      var dur = (ps && ps.phaseDuration) ? ps.phaseDuration : null;
+      var suffix = dur ? (' for ' + dur + ' day' + (dur === 1 ? '' : 's')) : '';
+      return '<div style="margin:2px 0 2px 14px;font-size:.86em;' + weight + '">' + dot +
+        esc(String(di.day)) + ' &mdash; <b>' + esc(planeName) + '</b> ' +
+        esc(String(t.to).replace(/^./, function(c){return c.toUpperCase();})) + esc(suffix) + '</div>';
+    });
+    sections.push(header + rowsPA.join(''));
+  }
+
+  if (!sections.length){
+    sections.push('<div style="font-size:.82em;opacity:.6;margin:4px 0;">No planar transitions in ' + esc(String(year)) + '.</div>');
+  }
+
+  var prevY = button('◀ ' + (year - 1), 'planar all ' + (year - 1));
+  var nextY = button((year + 1) + ' ▶', 'planar all ' + (year + 1));
+  var nav = '<div style="margin:8px 0 0 0;">' + prevY + ' ' + nextY + '</div>';
+  var back = '<div style="margin-top:6px;">' + button('⬅️ Back', 'additional') + '</div>';
+
+  return _menuBox('Planar — ' + esc(String(year)), sections.join('') + nav + back);
+}
+
+// Helper for the planar panels: engine `CalendarDate` carries either
+// `monthIndex` (kind 'month') or `intercalaryKey` (kind 'intercalary');
+// translate back to a wrapper structural index. Mirrors moon.ts's
+// `_calendarDateMonthIndex` so each subsystem can stand alone.
+function _calendarDateMonthIndexFor(date: any): number {
+  var months = getCal().months;
+  if (date.kind === 'intercalary'){
+    for (var j = 0; j < months.length; j++){
+      var m2: any = months[j];
+      if (m2.isIntercalary && String(m2.key || '').toLowerCase() === String(date.intercalaryKey).toLowerCase()) return j;
+    }
+    return 0;
+  }
+  for (var i = 0; i < months.length; i++){
+    var m: any = months[i];
+    if (m.isIntercalary) continue;
+    if (m.engineMonthIndex === date.monthIndex || m.regularIndex === date.monthIndex) return i;
+  }
+  return 0;
 }
 
 function _eventsRangeHtml(spec){
@@ -932,10 +1278,28 @@ export var commands = {
   resetcalendar: { gm:true, run:function(){ resetToDefaults(); } },
 
   // Moon system
-  lunar:  function(m, a){ handleMoonCommand(m, ['moon'].concat(a.slice(2))); }, // alias
-  moon:    function(m, a){ handleMoonCommand(m, a.slice(1)); },   // mixed: players=view, GM=edit
+  moon:    function(m, a){ handleMoonCommand(m, a.slice(1)); },   // legacy: players=view, GM=edit
 
-  // Planar system — parallel to moons
-  planar: function(m, a){ handlePlanesCommand(m, ['planes'].concat(a.slice(2))); }, // alias
-  planes:  function(m, a){ handlePlanesCommand(m, a.slice(1)); }
+  // §5.5 Lunar Current / All — whisper-only panels.
+  lunar:   function(m, a){
+    var sub = String(a[2] || 'current').toLowerCase();
+    if (sub === 'all'){
+      var y = parseInt(String(a[3] || ''), 10);
+      if (!isFinite(y)) y = getCal().current.year;
+      return whisper(m.who, _lunarAllHtml(y));
+    }
+    return whisper(m.who, _lunarCurrentHtml());
+  },
+
+  // §5.5 Planar Current / All — whisper-only panels, Eberron-only.
+  planar:  function(m, a){
+    var sub = String(a[2] || 'current').toLowerCase();
+    if (sub === 'all'){
+      var y = parseInt(String(a[3] || ''), 10);
+      if (!isFinite(y)) y = getCal().current.year;
+      return whisper(m.who, _planarAllHtml(y));
+    }
+    return whisper(m.who, _planarCurrentHtml());
+  },
+  planes:  function(m, a){ handlePlanesCommand(m, a.slice(1)); }   // legacy: planes panel
 };

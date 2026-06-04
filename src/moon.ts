@@ -736,6 +736,25 @@ export function _moonNextEvent(moonName, serial, type){
   }
 }
 
+// Returns the wrapper serial of the most recent inflection of `type`
+// strictly before `serial`, or null if none within ~2 cycles.
+//
+// The engine's `nextEvent` is forward-only by design (the synodic-period
+// math is closed-form, so any "previous" semantics would be a thin
+// wrapper anyway). We scan day-by-day backward up to twice the longest
+// supported cycle (Eberron Vult is ~28d; multi-month worlds top out
+// well under 70d). Engine `phaseOf` is O(1) per call so this is cheap.
+export function _moonLastEvent(moonName, serial, type){
+  var key = _moonKeyForName(moonName);
+  if (!key) return null;
+  var maxLookback = 70;
+  for (var d = 1; d <= maxLookback; d++){
+    var s = serial - d;
+    if (_moonPeakPhaseDay(moonName, s) === type) return s;
+  }
+  return null;
+}
+
 // ---------------------------------------------------------------------------
 // 20i) Moon forecast helpers
 // ---------------------------------------------------------------------------

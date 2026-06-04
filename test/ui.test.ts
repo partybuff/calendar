@@ -50,11 +50,13 @@ describe("Task-focused UI", () => {
     // Per PR 2d-a it carries one button per subsystem (Events / Moons /
     // Planes); 2d-b/c splits each into Current / All variants.
     assert(/Additional/.test(msg.msg), "title bar should say Additional");
-    // PR 2d-b: Events button split into Current / All variants.
+    // PR 2d-b split Events; PR 2d-c split Lunar and Planar.
     assert(/events current/.test(msg.msg), "should launch Events Current");
     assert(/events all/.test(msg.msg), "should launch Events All");
-    assert(/!cal moon\b/.test(msg.msg) || />🌙 Moons</.test(msg.msg), "should launch Moons");
-    assert(/!cal planes\b/.test(msg.msg) || />🌀 Planes</.test(msg.msg), "should launch Planes for Eberron");
+    assert(/lunar current/.test(msg.msg), "should launch Lunar Current");
+    assert(/lunar all/.test(msg.msg), "should launch Lunar All");
+    assert(/planar current/.test(msg.msg), "should launch Planar Current (Eberron)");
+    assert(/planar all/.test(msg.msg), "should launch Planar All (Eberron)");
     assert(/Back/.test(msg.msg), "should have a Back button");
   });
 
@@ -78,6 +80,54 @@ describe("Task-focused UI", () => {
     assert(/Events . 998|Events &mdash; 998|Events.*998/.test(msg.msg), "title should include the default year 998 YK");
     assert(/events all 997/.test(msg.msg), "should have previous-year button");
     assert(/events all 999/.test(msg.msg), "should have next-year button");
+    assert(/!cal additional/.test(msg.msg), "Back button should route to additional");
+  });
+
+  it("!cal lunar current renders one row per Eberron moon with last/next inflections", () => {
+    freshInstall();
+    completeSetup();
+    handleInput({ type: "api", content: "!cal lunar current", who: "GM (GM)", playerid: "GM" } as any);
+    const msg = (globalThis as any)._chatLog.slice(-1)[0];
+    assert(/Lunar.*Current/.test(msg.msg), "title should mention Lunar — Current");
+    assert(/<b>Olarune<\/b>/.test(msg.msg), "should include Olarune");
+    assert(/<b>Vult<\/b>/.test(msg.msg), "should include Vult");
+    assert(/Last:/.test(msg.msg), "should label Last event");
+    assert(/Next:/.test(msg.msg), "should label Next event");
+    assert(/!cal additional/.test(msg.msg), "Back button should route to additional");
+  });
+
+  it("!cal lunar all surfaces per-month chronological full/new entries", () => {
+    freshInstall();
+    completeSetup();
+    handleInput({ type: "api", content: "!cal lunar all", who: "GM (GM)", playerid: "GM" } as any);
+    const msg = (globalThis as any)._chatLog.slice(-1)[0];
+    assert(/Lunar.*998/.test(msg.msg), "title should include the default year 998 YK");
+    assert(/(Full|New)/.test(msg.msg), "should include Full/New entries");
+    assert(/lunar all 997/.test(msg.msg), "should have previous-year nav");
+    assert(/lunar all 999/.test(msg.msg), "should have next-year nav");
+    assert(/!cal additional/.test(msg.msg), "Back button should route to additional");
+  });
+
+  it("!cal planar current shows Past | Today | Upcoming sections on Eberron", () => {
+    freshInstall();
+    completeSetup();
+    handleInput({ type: "api", content: "!cal planar current", who: "GM (GM)", playerid: "GM" } as any);
+    const msg = (globalThis as any)._chatLog.slice(-1)[0];
+    assert(/Planar.*Current/.test(msg.msg), "title should mention Planar — Current");
+    assert(/>Past</.test(msg.msg), "should have Past section");
+    assert(/>Today</.test(msg.msg), "should have Today section");
+    assert(/>Upcoming</.test(msg.msg), "should have Upcoming section");
+    assert(/!cal additional/.test(msg.msg), "Back button should route to additional");
+  });
+
+  it("!cal planar all defaults to current year and surfaces year nav", () => {
+    freshInstall();
+    completeSetup();
+    handleInput({ type: "api", content: "!cal planar all", who: "GM (GM)", playerid: "GM" } as any);
+    const msg = (globalThis as any)._chatLog.slice(-1)[0];
+    assert(/Planar.*998/.test(msg.msg), "title should include the default year 998 YK");
+    assert(/planar all 997/.test(msg.msg), "should have previous-year nav");
+    assert(/planar all 999/.test(msg.msg), "should have next-year nav");
     assert(/!cal additional/.test(msg.msg), "Back button should route to additional");
   });
 
