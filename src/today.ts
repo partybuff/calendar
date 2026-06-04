@@ -1,13 +1,13 @@
 // Today — Combined detail from all subsystems
 import { CALENDAR_SYSTEMS, CONFIG_DEFAULTS } from './config.js';
 import { COLOR_THEMES, SEASON_SETS, STYLES, script_name, state_name } from './constants.js';
-import { _sourceAllowedForCalendar, applyCalendarSystem, applySeasonSet, defaults, ensureSettings, getAutoSuppressedSources, getCal, refreshAndSend, refreshCalendarState, resetToDefaults, sourceSuppressionState, titleCase } from './state.js';
+import { _sourceAllowedForCalendar, applyCalendarSystem, applySeasonSet, defaults, ensureSettings, getAutoSuppressedSources, getCal, refreshAndSend, refreshCalendarState, resetToDefaults, sourceSuppressionState, titleCase, weekLength } from './state.js';
 import { handleTokenCommand } from './token.js';
 import { colorsAPI } from './color.js';
 import { _invalidateSerialCache, _isLeapMonth, fromSerial, toSerial, todaySerial } from './date-math.js';
 import { DaySpec, Parse } from './parsing.js';
-import { _deliverAdditionalCalendarRange, _deliverTopLevelCalendarRange, buildAdditionalRangesCommand, buildCalendarsHtmlForSpec, defaultKeyFor, eventDisplayName, mergeInNewDefaultEvents, occurrencesInRange } from './events.js';
-import { button, clamp, esc, listAllEventsTableHtml, _monthRangeFromSerial, removeListHtml, removeMatchesListHtml, restoreDefaultEvents, suppressedDefaultsListHtml } from './rendering.js';
+import { _deliverAdditionalCalendarRange, _deliverTopLevelCalendarRange, buildAdditionalRangesCommand, buildCalendarsHtmlForSpec, defaultKeyFor, eventDisplayName, getEventColor, mergeInNewDefaultEvents, occurrencesInRange } from './events.js';
+import { button, clamp, esc, eventLineHtml, listAllEventsTableHtml, _monthRangeFromSerial, removeListHtml, removeMatchesListHtml, restoreDefaultEvents, suppressedDefaultsListHtml } from './rendering.js';
 import { _displayMonthDayParts, _menuBox, _serialToDateSpec, _shiftSerialByMonth, activeEffectsPanelHtml, addEventSmart, addMonthlySmart, addYearlySmart, additionalHubHtml, calendarSystemListHtml, currentDateLabel, formalCurrentDateLabel, helpCalendarSystemMenu, helpEventColorsMenu, helpRootMenu, helpSeasonsMenu, helpThemesMenu, nextForDayOnly, removeEvent, seasonSetListHtml, sendCurrentDate, setDate, stepDays, taskCardHtml, themeListHtml } from './ui.js';
 import { _normalizePackedWords, _playerTodayHtml, _showDefaultCalView, runEventsShortcut, send, whisper, whisperUi } from './commands.js';
 import { _getMoonSys, _moonPeakPhaseDay, handleMoonCommand, invalidateMoonModel, moonEnsureSequences } from './moon.js';
@@ -212,6 +212,25 @@ export var EVENT_SUB = {
     usage: null,
     run: function(m){ return commands.source.run(m, ['!cal', 'source', 'list']); }
   },
+  // §5.5 Events Current — Past | Today | Upcoming with week-length
+  // spillover into adjacent months. Every line carries an explicit
+  // month label (no "events this month" title).
+  current: {
+    usage: null,
+    run: function(m){
+      whisper(m.who, _eventsCurrentHtml());
+    }
+  },
+  // §5.5 Events All — year listing organized by month. Default year
+  // is the current calendar year; an explicit yyyy can override.
+  all: {
+    usage: null,
+    run: function(m, args){
+      var y = parseInt(String(args[0] || ''), 10);
+      if (!isFinite(y)) y = getCal().current.year;
+      whisper(m.who, _eventsAllHtml(y));
+    }
+  },
   panel: {
     usage: null,
     run: function(m, args){
@@ -331,6 +350,116 @@ function _eventsPanelHtml(serialArg){
 
   return _menuBox('Events — ' + esc(mobj.name + ' ' + dd.year),
     calHtml + lines.join('') + btns.join(''));
+}
+
+// ── §5.5 Events Current ──────────────────────────────────────────────────
+//
+// Three sections: Past | Today | Upcoming. The active month is always
+// fully included; adjacent months spill in for events within the week
+// length (so a 7-day-week world includes one week of prior/next month
+// events). Year boundaries are crossed transparently. Every line
+// carries an explicit month label via `eventLineHtml(..., includeYear=true)`.
+function _eventsCurrentHtml(){
+  var cal = getCal();
+  var c = cal.current;
+  var today = todaySerial();
+  var weekDays = Math.max(1, weekLength());
+
+  // Window: full current month + week-of-spillover on each side.
+  var monthStart = toSerial(c.year, c.month, 1);
+  var monthEnd = toSerial(c.year, c.month, cal.months[c.month].days | 0);
+  var windowStart = monthStart - weekDays;
+  var windowEnd = monthEnd + weekDays;
+
+  var occ = [];
+  try { occ = occurrencesInRange(windowStart, windowEnd); } catch(_e){}
+
+  // Bucket into past / today / upcoming preserving the engine's sort.
+  var past = [], onToday = [], upcoming = [];
+  for (var i = 0; i < occ.length; i++){
+    var o = occ[i];
+    if (o.serial < today) past.push(o);
+    else if (o.serial === today) onToday.push(o);
+    else upcoming.push(o);
+  }
+
+  function renderBucket(label, list, emptyHint){
+    var html = '<div style="font-weight:bold;font-size:.92em;margin:6px 0 2px 0;opacity:.85;">' + esc(label) + '</div>';
+    if (!list.length){
+      return html + '<div style="font-size:.82em;opacity:.6;margin:2px 0;">' + esc(emptyHint) + '</div>';
+    }
+    var rows = [];
+    for (var k = 0; k < list.length; k++){
+      var x = list[k];
+      var name = eventDisplayName(x.e);
+      rows.push(eventLineHtml(x.y, x.m, x.d, name, /*includeYear=*/true, (x.serial === today), getEventColor(x.e)));
+    }
+    return html + rows.join('');
+  }
+
+  var body = '';
+  body += renderBucket('Past', past, 'No recent events.');
+  body += renderBucket('Today', onToday, 'Nothing today.');
+  body += renderBucket('Upcoming', upcoming, 'Nothing on the horizon.');
+
+  body += '<div style="margin-top:8px;">' + button('⬅️ Back', 'additional') + '</div>';
+
+  return _menuBox('Events — Current', body);
+}
+
+// ── §5.5 Events All ──────────────────────────────────────────────────────
+//
+// Full year listing organized by month section header, chronological
+// within each month. Mixed canon + custom events; the wrapper doesn't
+// distinguish source (canon-only after PR 2c retires custom events).
+function _eventsAllHtml(year){
+  var cal = getCal();
+  var months = cal.months;
+  var yearStart = toSerial(year, 0, 1);
+  var lastMi = months.length - 1;
+  var yearEnd = toSerial(year, lastMi, months[lastMi].days | 0);
+  var today = todaySerial();
+
+  var occ = [];
+  try { occ = occurrencesInRange(yearStart, yearEnd); } catch(_e){}
+
+  // Group by structural month index. Engine sort already gives
+  // chronological order; we just bucket on the way out.
+  var byMonth: any = {};
+  for (var i = 0; i < occ.length; i++){
+    var key = String(occ[i].m | 0);
+    if (!byMonth[key]) byMonth[key] = [];
+    byMonth[key].push(occ[i]);
+  }
+
+  var sections = [];
+  for (var mi = 0; mi < months.length; mi++){
+    var bucket = byMonth[String(mi)] || [];
+    if (!bucket.length) continue;
+    var header = '<div style="font-weight:bold;font-size:.96em;margin:8px 0 3px 0;">' +
+      esc(months[mi].name) + '</div>';
+    var rows = [];
+    for (var k = 0; k < bucket.length; k++){
+      var x = bucket[k];
+      var name = eventDisplayName(x.e);
+      // includeYear=false inside a year-scoped panel — the title bar
+      // states the year.
+      rows.push(eventLineHtml(x.y, x.m, x.d, name, /*includeYear=*/false, (x.serial === today), getEventColor(x.e)));
+    }
+    sections.push(header + rows.join(''));
+  }
+
+  if (!sections.length){
+    sections.push('<div style="font-size:.82em;opacity:.6;margin:4px 0;">No events in ' + esc(String(year)) + '.</div>');
+  }
+
+  // Year nav + Back.
+  var prevY = button('◀ ' + (year - 1), 'events all ' + (year - 1));
+  var nextY = button((year + 1) + ' ▶', 'events all ' + (year + 1));
+  var nav = '<div style="margin:8px 0 0 0;">' + prevY + ' ' + nextY + '</div>';
+  var back = '<div style="margin-top:6px;">' + button('⬅️ Back', 'additional') + '</div>';
+
+  return _menuBox('Events — ' + esc(String(year)), sections.join('') + nav + back);
 }
 
 function _eventsRangeHtml(spec){

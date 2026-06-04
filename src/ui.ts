@@ -777,7 +777,14 @@ export function additionalHubHtml(){
   var st = ensureSettings();
   var sysKey = String(st.calendarSystem || '').toLowerCase();
   var rows = [];
-  rows.push('<div>' + button('Events','events panel') + '</div>');
+  // §5.5 — each subsystem exposes a Current panel (Past/Today/Upcoming
+  // by default) and an All panel (full year listing). Lunar and Planar
+  // panels still route to the legacy handlers in this PR; PR 2d-c
+  // ships their Current/All variants.
+  rows.push('<div>' +
+    button('Events Current','events current') + ' ' +
+    button('Events All','events all') +
+    '</div>');
   if (st.moonsEnabled !== false){
     rows.push('<div>' + button('🌙 Moons','moon') + '</div>');
   }
