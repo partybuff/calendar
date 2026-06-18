@@ -151,11 +151,26 @@ describe("Setup onboarding", () => {
     }
   });
 
-  it("resetcalendar returns the campaign to the onboarding gate", () => {
+  it("resetcalendar returns the campaign to the onboarding gate and archives an old→new chat anchor", () => {
     freshInstall();
     completeSetup();
+    const before = chatLog().length;
     resetToDefaults();
+    // Setup gate: status flips back to uninitialized so the next !cal
+    // re-launches the wizard.
     assertEquals(getSetupState().status, "uninitialized");
-    assert(lastChat().msg.includes("Use <code>!cal</code> to begin setup."));
+    const newChats = chatLog().slice(before);
+    // Public broadcast lands first and persists in chat history so the GM
+    // can scroll back to the moment of reset. /direct, archived.
+    const broadcast = newChats.find((c) => /Calendar reset/.test(c.msg) && /\/direct/.test(c.msg));
+    assert(broadcast, "expected an archived public broadcast announcing the reset");
+    assert(broadcast!.opts.noarchive !== true, "the reset broadcast must NOT be marked noarchive");
+    assert(/Was:/.test(broadcast!.msg), "broadcast should include the prior date");
+    assert(/Now:/.test(broadcast!.msg) && /campaign default/.test(broadcast!.msg),
+      "broadcast should include the new campaign-default date");
+    // GM-only operational ack follows, non-archived.
+    const gmAck = newChats.find((c) => /\/w gm/.test(c.msg) && /wiped/.test(c.msg));
+    assert(gmAck, "expected a GM-only operational confirmation");
+    assertEquals(gmAck!.opts.noarchive, true);
   });
 });
