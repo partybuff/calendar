@@ -14,7 +14,12 @@ export function send(opts, html){
   else if (opts.gmOnly) prefix = '/w gm ';
   else if (to)          prefix = '/w "' + to + '" ';
   else                  prefix = '/direct ';
-  var sendOpts = { noarchive: true };
+  // Public broadcasts (!cal send, calendar-reset announcement) persist in the
+  // Roll20 chat log so the campaign retains an in-game timestamp trail.
+  // Whispers, GM-only messages, and all sendUi* panels stay non-archived
+  // so interactive UI doesn't clutter the log.
+  var sendOpts: any = {};
+  if (!opts.broadcast || opts.noarchive) sendOpts.noarchive = true;
   sendChat(script_name, prefix + html, null, sendOpts);
 }
 

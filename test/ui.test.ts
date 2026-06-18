@@ -16,13 +16,18 @@ function setSerial(serial: number) {
 }
 
 describe("Task-focused UI", () => {
-  it("routes both transient helpers and broadcasts through noarchive", () => {
+  it("routes transient GM UI through noarchive but archives public broadcasts", () => {
+    // sendUi* paths are transient interactive panels (buttons re-render the
+    // panel) — they should never clutter Roll20's chat archive. Public
+    // broadcasts (!cal send, reset announcement) ARE the campaign's in-game
+    // timestamp anchor and must persist in chat history.
     freshInstall();
     sendUiToGM("<div>GM menu</div>");
     sendToAll("<div>Story-facing content</div>");
     const log = (globalThis as any)._chatLog;
     assertEquals(log[0].opts.noarchive, true);
-    assertEquals(log[1].opts.noarchive, true);
+    assert(log[1].opts.noarchive !== true,
+      "sendToAll must archive so the broadcast persists in Roll20 chat history");
   });
 
   it("renders the root help menu through the transient noarchive path with updated date wording", () => {

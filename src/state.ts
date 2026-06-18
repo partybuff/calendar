@@ -6,8 +6,9 @@ import { colorsAPI, resolveColor } from './color.js';
 import { _invalidateSerialCache } from './date-math.js';
 import { DaySpec, Parse } from './parsing.js';
 import { compareEvents, currentDefaultKeySet, defaultKeyFor, mergeInNewDefaultEvents } from './events.js';
-import { clamp } from './rendering.js';
-import { _getSeasonLabel, sendCurrentDate } from './ui.js';
+import { clamp, esc } from './rendering.js';
+import { sendToAll, sendToGM } from './messaging.js';
+import { _getSeasonLabel, currentDateLabel, sendCurrentDate } from './ui.js';
 
 
 /* ============================================================================
@@ -682,13 +683,46 @@ export function refreshAndSend(){
   sendCurrentDate(null, true);
 }
 
+function _worldDateLabel(){
+  var s = state[state_name] && state[state_name].settings;
+  var sysKey = (s && s.calendarSystem) || CONFIG_DEFAULTS.calendarSystem;
+  var sys = CALENDAR_SYSTEMS[sysKey] || CALENDAR_SYSTEMS.eberron;
+  var world = (sys && (sys.worldLabel || sys.label)) || sysKey;
+  return world + ', ' + currentDateLabel();
+}
+
 export function resetToDefaults(){
-  delete state[state_name];
-  state[state_name] = {
-    setup: {
-      status: 'uninitialized',
-      draft: {}
+  // Snapshot the live "World, Date" line before wiping so the chat-history
+  // anchor can show the old date alongside the new one. If state was already
+  // empty (no calendar present), oldLabel stays null and we omit the "Was:"
+  // half rather than emit something misleading.
+  var oldLabel = null;
+  try {
+    var cal = state[state_name] && state[state_name].calendar;
+    if (cal && cal.current && Array.isArray(cal.months) && cal.months.length){
+      oldLabel = _worldDateLabel();
     }
-  };
-  sendChat(script_name, '/w gm Calendar state wiped. Use <code>!cal</code> to begin setup.', null, { noarchive: true });
+  } catch (_e){ oldLabel = null; }
+
+  // Wipe and rehydrate to campaign defaults so the post-reset state is
+  // immediately usable AND the "Now: <default>" line in the announcement
+  // reflects actual state. The setup wizard still fires on next !cal
+  // (status stays 'uninitialized') so a GM who wants a different world
+  // or starting date gets the guided path.
+  delete state[state_name];
+  state[state_name] = {};
+  checkInstall();
+  var newLabel = _worldDateLabel();
+
+  // Public, archived: this is the in-game timestamp anchor the GM scrolls
+  // back to months later. Single line, no buttons (/direct strips them).
+  var publicLine =
+    '<b>📅 Calendar reset.</b><br>' +
+    (oldLabel ? 'Was: <i>' + esc(oldLabel) + '</i><br>' : '') +
+    'Now: <i>' + esc(newLabel) + '</i> (campaign default).';
+  sendToAll(publicLine);
+
+  // GM-only operational ack (not archived).
+  sendToGM('Calendar state wiped and reset to <i>' + esc(newLabel) +
+           '</i>. Use <code>!cal</code> to reconfigure or accept the defaults.');
 }
