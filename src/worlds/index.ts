@@ -66,6 +66,40 @@ export type StructuralSlot = {
 /* Per-world structural arrays, computed once at module load. */
 const STRUCTURAL_CACHE: Record<string, StructuralSlot[]> = {};
 
+/** Effective structural slots for a world: the overlay's explicit list,
+ *  or — when `deriveIntercalarySlots` is set — slots generated from the
+ *  engine's own intercalary data so the wrapper tracks engine canon. */
+function effectiveIntercalarySlots(
+  engine: EngineWorld,
+  overlay: WrapperOverlay,
+): StructuralIntercalary[] {
+  if (!overlay.deriveIntercalarySlots) return overlay.intercalarySlots;
+  return engine.calendar.intercalaries.map((ic) => ({
+    key: ic.key,
+    position: 'after' as const,
+    monthIndex: ic.insertAfter.monthIndex,
+  }));
+}
+
+/** Naming overlays with `useEngineMonthNames` resolved against the engine. */
+function resolveNamingOverlays(engine: EngineWorld, overlay: WrapperOverlay) {
+  return overlay.namingOverlays.map((o) => ({
+    ...o,
+    monthNames: o.useEngineMonthNames
+      ? engine.calendar.months.map((m) => m.name)
+      : o.monthNames.slice(),
+  }));
+}
+
+/** True while the engine still ships the overlay's LEGACY scheme (the
+ *  probe intercalary key is present). Worlds without a schemeProbe are
+ *  always "legacy" (i.e., the overlay applies unchanged). */
+function isLegacyScheme(engine: EngineWorld, overlay: WrapperOverlay): boolean {
+  const probe = overlay.schemeProbe;
+  if (!probe) return true;
+  return engine.calendar.intercalaries.some((ic) => ic.key === probe.legacyKey);
+}
+
 function buildStructure(
   engine: EngineWorld,
   overlay: WrapperOverlay,
@@ -79,7 +113,7 @@ function buildStructure(
   type Anchor = { position: 'before' | 'after'; monthIndex: number };
   const isSameAnchor = (a: Anchor, b: Anchor) => a.position === b.position && a.monthIndex === b.monthIndex;
   const slotsByAnchor: { anchor: Anchor; slots: StructuralIntercalary[] }[] = [];
-  for (const s of overlay.intercalarySlots) {
+  for (const s of effectiveIntercalarySlots(engine, overlay)) {
     const entry = slotsByAnchor.find((e) => isSameAnchor(e.anchor, { position: s.position, monthIndex: s.monthIndex }));
     if (entry) entry.slots.push(s);
     else slotsByAnchor.push({ anchor: { position: s.position, monthIndex: s.monthIndex }, slots: [s] });
@@ -207,7 +241,8 @@ function composeCalendar(
   overlay: WrapperOverlay,
   structural: StructuralSlot[],
 ): CalendarDefinition {
-  const monthNamesCanonical = overlay.namingOverlays.find(
+  const namingOverlays = resolveNamingOverlays(engine, overlay);
+  const monthNamesCanonical = namingOverlays.find(
     (o) => o.key === overlay.defaultOverlayKey,
   )?.monthNames || engine.calendar.months.map((m) => m.name);
 
@@ -247,7 +282,7 @@ function composeCalendar(
     weekdayAbbr: overlay.weekdayAbbr,
     monthDays,
     structure,
-    namingOverlays: overlay.namingOverlays.map((o) => ({ ...o, monthNames: o.monthNames.slice() })),
+    namingOverlays: namingOverlays.map((o) => ({ ...o, monthNames: o.monthNames.slice() })),
     defaultOverlayKey: overlay.defaultOverlayKey,
     weekdayProgressionMode: overlay.weekdayProgressionMode,
     intercalaryRenderMode: overlay.intercalaryRenderMode,
@@ -258,9 +293,19 @@ function composeCalendar(
 
 function composeWorld(overlay: WrapperOverlay): WorldDefinition {
   const engine = engineWorlds.get(overlay.engineId);
-  const defaultOverlay = overlay.namingOverlays.find((o) => o.key === overlay.defaultOverlayKey)
-    || overlay.namingOverlays[0];
+  const namingOverlays = resolveNamingOverlays(engine, overlay);
+  const defaultOverlay = namingOverlays.find((o) => o.key === overlay.defaultOverlayKey)
+    || namingOverlays[0];
   const monthNames = defaultOverlay ? defaultOverlay.monthNames : engine.calendar.months.map((m) => m.name);
+
+  /* Scheme gating: overlays carrying a schemeProbe adapt their seasons and
+   * event packs to whichever engine scheme is installed. */
+  const legacyScheme = isLegacyScheme(engine, overlay);
+  const probe = overlay.schemeProbe;
+  const seasonsSource = (!legacyScheme && probe?.canonSeasons) ? probe.canonSeasons : overlay.seasons;
+  const eventPacksSource = (overlay.eventPacks && !legacyScheme && probe?.legacyOnlyEventPackKeys)
+    ? overlay.eventPacks.filter((p) => !probe.legacyOnlyEventPackKeys!.includes(p.key))
+    : overlay.eventPacks;
 
   const structural = buildStructure(engine, overlay, monthNames);
   STRUCTURAL_CACHE[overlay.wrapperKey] = structural;
@@ -289,7 +334,7 @@ function composeWorld(overlay: WrapperOverlay): WorldDefinition {
       year: ed.year,
     },
     calendar: composeCalendar(engine, overlay, structural),
-    seasons: overlay.seasons.map((s) => ({
+    seasons: seasonsSource.map((s) => ({
       ...s,
       names: s.names.slice(),
       transitions: s.transitions ? s.transitions.slice() : undefined,
@@ -297,7 +342,7 @@ function composeWorld(overlay: WrapperOverlay): WorldDefinition {
     })),
     defaultSeasonKey: overlay.defaultSeasonKey,
     moons: composeMoons(engine, overlay),
-    eventPacks: overlay.eventPacks ? overlay.eventPacks.map((p): EventPackDefinition => ({
+    eventPacks: eventPacksSource ? eventPacksSource.map((p): EventPackDefinition => ({
       key: p.key,
       label: p.label,
       events: p.events.map((e) => ({ ...e })),

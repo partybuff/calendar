@@ -38,6 +38,10 @@ export type NamingOverlay = {
   label: string;
   monthNames: string[];
   colorTheme: string;
+  /** When true, `monthNames` is ignored and the engine world's own month
+   *  names are used. Set for worlds whose canon is still being corrected
+   *  engine-side, so renames flow through automatically. */
+  useEngineMonthNames?: boolean;
 };
 
 export type CalendarDefinition = {

@@ -70,6 +70,27 @@ export type WrapperOverlay = {
    *  Order doesn't matter — the composer sorts by structural position. */
   intercalarySlots: StructuralIntercalary[];
 
+  /** When true, `intercalarySlots` is ignored and slots are derived from
+   *  the engine world's own intercalary list (position 'after' each
+   *  `insertAfter.monthIndex`). Use for worlds whose engine canon is still
+   *  being corrected — the wrapper then tracks engine structure across
+   *  releases instead of crashing on renamed keys. Explicit slots remain
+   *  the right tool for worlds needing 'before' placement or yearDelta
+   *  (Greyhawk Needfest). */
+  deriveIntercalarySlots?: boolean;
+
+  /** Scheme-migration gate for worlds whose engine canon is being reworked.
+   *  `legacyKey` names an intercalary that exists ONLY in the old engine
+   *  scheme. While it's present the overlay applies unchanged; once the
+   *  engine ships the rework (key absent), `canonSeasons` replaces
+   *  `seasons` and event packs listed in `legacyOnlyEventPackKeys` are
+   *  dropped (their month/day anchors reference the old layout). */
+  schemeProbe?: {
+    legacyKey: string;
+    canonSeasons?: SeasonDefinition[];
+    legacyOnlyEventPackKeys?: string[];
+  };
+
   /** Naming overlays — alternate month-name sets the GM can swap to.
    *  The first overlay (defaultOverlayKey) is canonical from the engine. */
   namingOverlays: NamingOverlay[];
@@ -259,19 +280,18 @@ const faerunOverlay: WrapperOverlay = {
     Fifthday: '5th', Sixthday: '6th', Seventhday: '7th', Eighthday: '8th',
     Ninthday: '9th', Tenthday: '10th',
   },
-  /* Harptos layout: festivals interleaved between the canonical months.
-   * Wrapper sequence (structural):
-   *   Hammer · Midwinter · Alturiak · Ches · Tarsakh · Greengrass ·
-   *   Mirtul · Kythorn · Flamerule · Midsummer · Shieldmeet · Eleasis ·
-   *   Eleint · Marpenoth · Uktar · Highharvestide · Nightal · Feast of the Moon */
-  intercalarySlots: [
-    { key: 'midwinter',         position: 'after', monthIndex: 0 },
-    { key: 'greengrass',        position: 'after', monthIndex: 3 },
-    { key: 'midsummer',         position: 'after', monthIndex: 6 },
-    { key: 'shieldmeet',        position: 'after', monthIndex: 6 },
-    { key: 'highharvestide',    position: 'after', monthIndex: 10 },
-    { key: 'feast_of_the_moon', position: 'after', monthIndex: 11 },
-  ],
+  /* Harptos layout: festivals interleaved between the canonical months,
+   * DERIVED from the engine's `insertAfter` data. Positions must match the
+   * engine exactly — the wrapper serializes dates with its structural order
+   * while moon phases re-serialize through the engine's order, so any
+   * mismatch makes lunar output discontinuous across the festivals.
+   * Engine 0.24.0 canon-corrected two anchors (Highharvestide: after Uktar
+   * → after Eleint; Feast of the Moon: after Nightal → after Uktar);
+   * deriving keeps the wrapper agreeing with whichever engine version is
+   * installed, and the checkInstall migration remaps persisted campaign
+   * indexes when the layout shifts. Guarded by test/canon-structure. */
+  deriveIntercalarySlots: true,
+  intercalarySlots: [],
   namingOverlays: [
     {
       key: 'standard',
@@ -687,33 +707,55 @@ const birthrightOverlay: WrapperOverlay = {
   engineId: 'birthright',
   calendarLabel: 'Cerilian Calendar',
   worldLabel: 'Aebrynis',
+  /* Covers both engine schemes: the legacy weekday set
+   * (Firlen…Achlen) and the canon-rework set (Firlen, Relen, Dielen,
+   * Varilen, Branlen, Barlen, Mierlen, Taelen). Unmatched keys are
+   * harmless — the renderer only looks up names the engine ships. */
   weekdayAbbr: {
     Firlen: 'Fir', Dielen: 'Die', Trielen: 'Tri', Fiaren: 'Fia',
     Quinlen: 'Qui', Seislen: 'Sei', Seplen: 'Sep', Achlen: 'Ach',
+    Relen: 'Rel', Varilen: 'Var', Branlen: 'Bra', Barlen: 'Bar',
+    Mierlen: 'Mie', Taelen: 'Tae',
   },
-  /* Wrapper structure mirrors the engine intercalary positions exactly:
-   *   Emmanir · Erntenir · Deismir · Talenir · Roelir · Haelynir ·
-   *   Anarire · Sarimiere · Roesone · Midsummer · Passir · Sehnir ·
-   *   Keltier · Midwinter · Michaelen · Faniele */
-  intercalarySlots: [
-    { key: 'erntenir',  position: 'after', monthIndex: 0 },
-    { key: 'haelynir',  position: 'after', monthIndex: 3 },
-    { key: 'midsummer', position: 'after', monthIndex: 6 },
-    { key: 'midwinter', position: 'after', monthIndex: 9 },
-  ],
+  /* Birthright's engine canon is being corrected (the legacy scheme had
+   * the wrong month order, non-canon months, and Erntenir/Haelynir demoted
+   * to intercalaries; the rework promotes them to months and adds
+   * Day of Rebirth / Night of Fire / Veneration of the Sleeping /
+   * Eve of the Dead). Structure and month names are DERIVED from the
+   * engine so the wrapper tracks whichever scheme the installed engine
+   * ships instead of crashing on renamed intercalary keys. */
+  deriveIntercalarySlots: true,
+  intercalarySlots: [],
   namingOverlays: [
     {
       key: 'standard',
       label: 'Anuirean',
-      monthNames: [
-        'Emmanir', 'Deismir', 'Talenir', 'Roelir',
-        'Anarire', 'Sarimiere', 'Roesone', 'Passir',
-        'Sehnir', 'Keltier', 'Michaelen', 'Faniele',
-      ],
+      monthNames: [],
+      useEngineMonthNames: true,
       colorTheme: 'birthright',
     },
   ],
   defaultOverlayKey: 'standard',
+  schemeProbe: {
+    legacyKey: 'erntenir',
+    /* Canon rework opens the year at the vernal equinox (Day of Rebirth →
+     * Sarimiere 1), so seasons run Spring(0-2) · Summer(3-5) ·
+     * Autumn(6-8) · Winter(9-11), matching the engine's season table. */
+    canonSeasons: [
+      {
+        key: 'birthright',
+        names: [
+          'Spring', 'Spring', 'Spring', 'Summer', 'Summer', 'Summer',
+          'Autumn', 'Autumn', 'Autumn', 'Winter', 'Winter', 'Winter',
+        ],
+        hemisphereAware: false,
+      },
+    ],
+    /* The legacy festival pack anchors month indexes into the OLD layout;
+     * under the rework those point at the wrong months. Canon festival
+     * content arrives via the engine-holiday mirror (separate change). */
+    legacyOnlyEventPackKeys: ['birthright_festivals'],
+  },
   weekdayProgressionMode: 'continuous_serial',
   intercalaryRenderMode: 'regular_grid',
   dateFormatStyle: 'ordinal_of_month',
