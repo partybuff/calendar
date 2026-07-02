@@ -609,11 +609,66 @@ export function checkInstall(){
 
   // Apply the active calendar system (rebuilds months, weekdays, seasons, names).
   var s = ensureSettings();
+
+  // ── Faerûn festival reposition migration (engine 0.24.0 canon fix) ──
+  // Engine 0.24.0 moved Highharvestide (after Uktar → after Eleint) and
+  // Feast of the Moon (after Nightal → after Uktar); the wrapper overlay
+  // moved with it. applyCalendarSystem below rebuilds cal.months in the
+  // NEW order, but persisted structural indexes (current date, event
+  // anchors) would keep pointing at the old positions. Snapshot the
+  // legacy layout's slot names so indexes can be remapped afterward.
+  // Fingerprint: Highharvestide still sits after Uktar (regularIndex 10).
+  var _faerunLegacyNames = null;
+  if (String(s.calendarSystem || '') === 'faerunian' && Array.isArray(cal.months)){
+    for (var fhh = 0; fhh < cal.months.length; fhh++){
+      var fmo = cal.months[fhh];
+      if (!fmo || !fmo.isIntercalary) continue;
+      if (String(fmo.name || '').toLowerCase() !== 'highharvestide') continue;
+      var fprev = null;
+      for (var fpj = fhh - 1; fpj >= 0; fpj--){
+        if (cal.months[fpj] && !cal.months[fpj].isIntercalary){ fprev = cal.months[fpj]; break; }
+      }
+      if (fprev && fprev.regularIndex === 10){
+        _faerunLegacyNames = cal.months.map(function(mo){
+          return String((mo && mo.name) || '').toLowerCase();
+        });
+      }
+      break;
+    }
+  }
+  // Only events that already existed under the legacy layout carry legacy
+  // anchors; events added by mergeInNewDefaultEvents below are authored
+  // against the rebuilt (canon) layout and must not be remapped.
+  var _faerunLegacyEvents = _faerunLegacyNames && Array.isArray(cal.events)
+    ? cal.events.slice() : null;
+
   applyCalendarSystem(s.calendarSystem || CONFIG_DEFAULTS.calendarSystem,
                       s.calendarVariant || CONFIG_DEFAULTS.calendarVariant);
 
   mergeInNewDefaultEvents(cal);
   _invalidateSerialCache();
+
+  if (_faerunLegacyNames){
+    var _newIdxByName = {};
+    for (var fni = 0; fni < cal.months.length; fni++){
+      _newIdxByName[String((cal.months[fni] && cal.months[fni].name) || '').toLowerCase()] = fni;
+    }
+    var _remap = function(oldIdx){
+      var nm = _faerunLegacyNames[oldIdx];
+      return (nm != null && _newIdxByName[nm] != null) ? _newIdxByName[nm] : null;
+    };
+    var _curNew = _remap(cal.current.month | 0);
+    if (_curNew != null && _curNew !== (cal.current.month | 0)) cal.current.month = _curNew;
+    for (var fei = 0; fei < cal.events.length; fei++){
+      if (_faerunLegacyEvents && _faerunLegacyEvents.indexOf(cal.events[fei]) < 0) continue;
+      var _evNew = _remap((cal.events[fei].month | 0) - 1);
+      if (_evNew != null) cal.events[fei].month = _evNew + 1;
+    }
+    _invalidateSerialCache();
+    log('[Party Buff Calendar] Migrated Faerûn festival positions to engine canon '
+      + '(Highharvestide now after Eleint, Feast of the Moon after Uktar); '
+      + 'current date and event anchors were remapped by month name.');
+  }
 
   // clamp current date within the month it landed on
   var mdays = cal.months[cal.current.month].days;
