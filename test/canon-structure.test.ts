@@ -69,11 +69,14 @@ describe('faerûn festival-position state migration', () => {
   it('remaps persisted indexes when the legacy layout is detected', () => {
     freshInstall();
     ensureSettings().calendarSystem = 'faerunian';
-    checkInstall(); // compose faerunian months (canon order)
+    checkInstall(); // compose faerunian months from the installed engine
     const cal = getCal();
 
     // Reconstruct the LEGACY persisted layout: Highharvestide after Uktar
     // (regularIndex 10), Feast of the Moon after Nightal (regularIndex 11).
+    // On pre-0.24.0 engines this equals the composed layout (the migration
+    // then exercises its identity/no-op path); on 0.24.0+ it differs and
+    // the remap path runs. Both must preserve name-pointing.
     const hh = slotIndexByName(cal.months, 'highharvestide');
     const fm = slotIndexByName(cal.months, 'feast of the moon');
     assert(hh > 0 && fm > 0, 'faerunian layout must contain both festivals');
@@ -97,8 +100,9 @@ describe('faerûn festival-position state migration', () => {
     cal.current.day_of_the_month = 5;
     cal.events.push({ name: 'Test Vigil', month: nightalLegacy + 1, day: '3', year: null, color: null, source: null });
 
-    // Reload: checkInstall re-applies the calendar system (canon order)
-    // and must remap the persisted indexes by slot name.
+    // Reload: checkInstall re-applies the calendar system (whatever layout
+    // the installed engine ships) and must keep persisted indexes pointing
+    // at the same-named slots.
     checkInstall();
     const migrated = getCal();
     assertEquals(
@@ -114,10 +118,22 @@ describe('faerûn festival-position state migration', () => {
       'nightal',
       'event anchor must still point at Nightal after migration',
     );
-    // Canon order restored: Highharvestide directly after Eleint.
-    const hhNew = slotIndexByName(migrated.months, 'highharvestide');
-    const eleint = slotIndexByName(migrated.months, 'eleint');
-    assertEquals(hhNew, eleint + 1, 'Highharvestide must sit directly after Eleint');
+    // The rebuilt layout agrees with the installed engine's canon: each
+    // festival sits directly after the engine's insertAfter month.
+    const engine = engineWorlds.get('faerun');
+    for (const ic of engine.calendar.intercalaries) {
+      const slotIdx = slotIndexByName(migrated.months, ic.label.toLowerCase());
+      assert(slotIdx > 0, `festival "${ic.label}" present`);
+      let prevRegular = -1;
+      for (let j = slotIdx - 1; j >= 0; j--) {
+        if (!migrated.months[j].isIntercalary) { prevRegular = migrated.months[j].regularIndex; break; }
+      }
+      assertEquals(
+        prevRegular,
+        ic.insertAfter.monthIndex,
+        `"${ic.label}" must sit after engine month ${ic.insertAfter.monthIndex}`,
+      );
+    }
   });
 
   it('is a no-op for campaigns already on the canon layout', () => {

@@ -280,24 +280,18 @@ const faerunOverlay: WrapperOverlay = {
     Fifthday: '5th', Sixthday: '6th', Seventhday: '7th', Eighthday: '8th',
     Ninthday: '9th', Tenthday: '10th',
   },
-  /* Harptos layout: festivals interleaved between the canonical months.
-   * Wrapper sequence (structural), matching engine canon as of 0.24.0:
-   *   Hammer · Midwinter · Alturiak · Ches · Tarsakh · Greengrass ·
-   *   Mirtul · Kythorn · Flamerule · Midsummer · Shieldmeet · Eleasis ·
-   *   Eleint · Highharvestide · Marpenoth · Uktar · Feast of the Moon ·
-   *   Nightal
-   * These positions MUST match the engine's `insertAfter` data — the
-   * wrapper serializes dates with this order while moon phases re-serialize
-   * through the engine's order, so a mismatch makes lunar output
-   * discontinuous across the festivals. Guarded by test/canon-structure. */
-  intercalarySlots: [
-    { key: 'midwinter',         position: 'after', monthIndex: 0 },
-    { key: 'greengrass',        position: 'after', monthIndex: 3 },
-    { key: 'midsummer',         position: 'after', monthIndex: 6 },
-    { key: 'shieldmeet',        position: 'after', monthIndex: 6 },
-    { key: 'highharvestide',    position: 'after', monthIndex: 8 },
-    { key: 'feast_of_the_moon', position: 'after', monthIndex: 10 },
-  ],
+  /* Harptos layout: festivals interleaved between the canonical months,
+   * DERIVED from the engine's `insertAfter` data. Positions must match the
+   * engine exactly — the wrapper serializes dates with its structural order
+   * while moon phases re-serialize through the engine's order, so any
+   * mismatch makes lunar output discontinuous across the festivals.
+   * Engine 0.24.0 canon-corrected two anchors (Highharvestide: after Uktar
+   * → after Eleint; Feast of the Moon: after Nightal → after Uktar);
+   * deriving keeps the wrapper agreeing with whichever engine version is
+   * installed, and the checkInstall migration remaps persisted campaign
+   * indexes when the layout shifts. Guarded by test/canon-structure. */
+  deriveIntercalarySlots: true,
+  intercalarySlots: [],
   namingOverlays: [
     {
       key: 'standard',
