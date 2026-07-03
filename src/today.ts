@@ -1,7 +1,7 @@
 // Today — Combined detail from all subsystems
 import { CALENDAR_SYSTEMS, CONFIG_DEFAULTS } from './config.js';
 import { COLOR_THEMES, SEASON_SETS, STYLES, script_name, state_name } from './constants.js';
-import { _sourceAllowedForCalendar, applyCalendarSystem, applySeasonSet, defaults, ensureSettings, getAutoSuppressedSources, getCal, refreshAndSend, refreshCalendarState, resetToDefaults, sourceSuppressionState, titleCase, weekLength } from './state.js';
+import { _sourceAllowedForCalendar, applyCalendarSystem, applySeasonSet, defaults, ensureSettings, getAutoSuppressedSources, getCal, refreshAndSend, refreshCalendarState, resetToDefaults, resolveSourceKeyInput, sourceDisplayLabel, sourceSuppressionState, titleCase, weekLength } from './state.js';
 import { handleTokenCommand } from './token.js';
 import { colorsAPI } from './color.js';
 import { _invalidateSerialCache, _isLeapMonth, fromSerial, toSerial, todaySerial } from './date-math.js';
@@ -1107,7 +1107,7 @@ export var commands = {
         '</tr>';
 
       var rows = displayKeys.map(function(k, i){
-        var label    = titleCase(seen[k]);
+        var label    = titleCase(sourceDisplayLabel(seen[k]));
         var stats = sourceVisibility(k);
         var upBtn    = i > 0
           ? button('↑', 'source up '   + label, {icon:''})
@@ -1142,7 +1142,7 @@ export var commands = {
     }
 
     function movePriority(name, dir){
-      var key  = String(name||'').toLowerCase();
+      var key  = resolveSourceKeyInput(name);
       var seen = allSources();
       if (!key || !seen[key]){ whisper(m.who, 'Source not found: '+esc(name)); return; }
       var st   = ensureSettings();
@@ -1166,7 +1166,7 @@ export var commands = {
     }
 
     function disableSource(name){
-      var key = String(name||'').toLowerCase();
+      var key = resolveSourceKeyInput(name);
       if (!key){ whisper(m.who, 'Usage: <code>!cal source disable &lt;name&gt;</code>'); return; }
       var sourceKeys = sourceDefaultKeys(key);
       if (!sourceKeys.length){ whisper(m.who, 'Source not found: ' + esc(name)); return; }
@@ -1189,7 +1189,7 @@ export var commands = {
     }
 
     function enableSource(name){
-      var key = String(name||'').toLowerCase();
+      var key = resolveSourceKeyInput(name);
       if (!key){ whisper(m.who, 'Usage: <code>!cal source enable &lt;name&gt;</code>'); return; }
       var sourceKeys = sourceDefaultKeys(key);
       if (!sourceKeys.length && !autoSuppressedSources[key]){ whisper(m.who, 'Source not found: ' + esc(name)); return; }

@@ -35,9 +35,13 @@ below, treat it as legacy and confirm with the user before extending it.
   azimuth, eclipse math, or "long shadows" framing.
 - Eberron planar events surfaced in the Planar Current/All panels.
   Canon-only — no GM-tunable seeds, no off-cycle generation, no overrides.
-- Events display, canon-pack only. Event content arrives via
-  `!cal token` from the web app; the Roll20 wrapper has no
-  add/remove/list GM commands.
+- Events display, engine-canon only. ALL event content is generated
+  from engine `world.holidays` at compose time
+  (`src/worlds/index.ts::eventPacksFromEngine`); this repo hosts NO
+  event data. Fidelity to the engine's own occurrence math is enforced
+  by `test/engine-events-parity.test.ts`. The wrapper has no
+  add/remove/list GM commands. The `!cal token` import pipeline is NOT
+  operational and is not planned — do not build against it.
 - GM commands: set world, set date, advance/retreat, paste a setup
   token, broadcast the today panel.
 - Whisper-first UX. `!cal` is the only chat entry point and every

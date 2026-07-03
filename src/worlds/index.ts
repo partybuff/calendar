@@ -100,6 +100,95 @@ function isLegacyScheme(engine: EngineWorld, overlay: WrapperOverlay): boolean {
   return engine.calendar.intercalaries.some((ic) => ic.key === probe.legacyKey);
 }
 
+/* ── Event packs from engine holidays ─────────────────────────────────────
+ *
+ * The wrapper hosts NO event content: every event is generated from the
+ * engine world's `holidays` data at compose time. Holidays are grouped
+ * into packs by their engine `source` key (world-prefixed, because source
+ * names collide across worlds — 'historical' appears in five), which
+ * plugs into the existing DEFAULT_EVENTS / source-suppression machinery.
+ *
+ * Rule-kind translation to wrapper DaySpec:
+ *   fixed                       → 'D' or 'D-D' on the month's structural slot
+ *   floating/intercalary        → day within that intercalary's structural slot
+ *   floating/weekly             → month 'all' + 'every <weekday>'
+ *   floating/nth_weekday_of_every_month → month 'all' + '<nth> <weekday>'
+ *   floating/nth_weekday_of_month       → '<nth> <weekday>' on that month
+ *   floating/gregorian_table    → skipped (no recurring-spec equivalent;
+ *                                 unused by any shipped world)
+ * Fidelity is enforced by test/engine-events-parity.test.ts against the
+ * engine's own allOccurrencesIn(). */
+const NTH_WORD: Record<string, string> = {
+  '1': 'first', '2': 'second', '3': 'third', '4': 'fourth', '5': 'fifth', '-1': 'last',
+};
+
+function titleWords(s: string): string {
+  return s.replace(/\b[a-z]/g, (c) => c.toUpperCase());
+}
+
+function eventPacksFromEngine(
+  wrapperKey: string,
+  engine: EngineWorld,
+  structural: StructuralSlot[],
+): EventPackDefinition[] | undefined {
+  const holidays = engine.holidays || [];
+  if (!holidays.length) return undefined;
+
+  const structMonth = new Map<number, number>();
+  const structIc = new Map<string, number>();
+  structural.forEach((s, i) => {
+    if (s.translation.kind === 'month') structMonth.set(s.translation.engineMonthIndex, i + 1);
+    else structIc.set(s.translation.intercalaryKey, i + 1);
+  });
+  /* Lowercased to match the wrapper's canonical DaySpec form — the
+   * seed and merge paths dedupe on the day string, so capitalization
+   * mismatches would duplicate events. */
+  const weekdayName = (wi: number) => (engine.calendar.weekdays[wi] || '').toLowerCase();
+
+  const bySource = new Map<string, { name: string; month: number | 'all'; day: string; color?: string; source: string }[]>();
+  for (const h of holidays) {
+    let month: number | 'all' | null = null;
+    let day: string | null = null;
+    if (h.kind === 'fixed') {
+      month = structMonth.get(h.monthIndex) ?? null;
+      day = (h.endDay != null && h.endDay > h.day) ? (h.day + '-' + h.endDay) : String(h.day);
+    } else {
+      const r = h.rule;
+      if (r.kind === 'intercalary') {
+        month = structIc.get(r.intercalaryKey) ?? null;
+        day = String(r.day || 1);
+      } else if (r.kind === 'weekly') {
+        month = 'all';
+        day = 'every ' + weekdayName(r.weekdayIndex);
+      } else if (r.kind === 'nth_weekday_of_every_month') {
+        const nth = NTH_WORD[String(r.nth)];
+        if (nth) { month = 'all'; day = nth + ' ' + weekdayName(r.weekdayIndex); }
+      } else if (r.kind === 'nth_weekday_of_month') {
+        const nth = NTH_WORD[String(r.nth)];
+        const m = structMonth.get(r.monthIndex);
+        if (nth && m != null) { month = m; day = nth + ' ' + weekdayName(r.weekdayIndex); }
+      }
+      /* gregorian_table: intentionally unhandled — see block comment. */
+    }
+    if (month == null || day == null || !day.trim()) continue;
+
+    const sourceKey = wrapperKey + ':' + (h.source || 'canon');
+    if (!bySource.has(sourceKey)) bySource.set(sourceKey, []);
+    const entry: { name: string; month: number | 'all'; day: string; color?: string; source: string } = {
+      name: h.label, month, day, source: sourceKey,
+    };
+    if (h.color) entry.color = h.color;
+    bySource.get(sourceKey)!.push(entry);
+  }
+  if (!bySource.size) return undefined;
+
+  return Array.from(bySource.entries()).map(([key, events]) => ({
+    key,
+    label: titleWords(key.slice(wrapperKey.length + 1)),
+    events,
+  }));
+}
+
 function buildStructure(
   engine: EngineWorld,
   overlay: WrapperOverlay,
@@ -298,14 +387,11 @@ function composeWorld(overlay: WrapperOverlay): WorldDefinition {
     || namingOverlays[0];
   const monthNames = defaultOverlay ? defaultOverlay.monthNames : engine.calendar.months.map((m) => m.name);
 
-  /* Scheme gating: overlays carrying a schemeProbe adapt their seasons and
-   * event packs to whichever engine scheme is installed. */
+  /* Scheme gating: overlays carrying a schemeProbe adapt their seasons to
+   * whichever engine scheme is installed. */
   const legacyScheme = isLegacyScheme(engine, overlay);
   const probe = overlay.schemeProbe;
   const seasonsSource = (!legacyScheme && probe?.canonSeasons) ? probe.canonSeasons : overlay.seasons;
-  const eventPacksSource = (overlay.eventPacks && !legacyScheme && probe?.legacyOnlyEventPackKeys)
-    ? overlay.eventPacks.filter((p) => !probe.legacyOnlyEventPackKeys!.includes(p.key))
-    : overlay.eventPacks;
 
   const structural = buildStructure(engine, overlay, monthNames);
   STRUCTURAL_CACHE[overlay.wrapperKey] = structural;
@@ -342,11 +428,7 @@ function composeWorld(overlay: WrapperOverlay): WorldDefinition {
     })),
     defaultSeasonKey: overlay.defaultSeasonKey,
     moons: composeMoons(engine, overlay),
-    eventPacks: eventPacksSource ? eventPacksSource.map((p): EventPackDefinition => ({
-      key: p.key,
-      label: p.label,
-      events: p.events.map((e) => ({ ...e })),
-    })) : undefined,
+    eventPacks: eventPacksFromEngine(overlay.wrapperKey, engine, structural),
     capabilities: { ...overlay.capabilities },
     setup: overlay.setup || {},
   };

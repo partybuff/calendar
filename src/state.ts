@@ -1,7 +1,8 @@
 // Sections 2-3: Default State Factory + State & Settings
+import { date as engineDate } from '@partybuff/calendar-engine';
 import { CALENDAR_SYSTEMS, CONFIG_DEFAULTS, CONFIG_MONTH_LENGTHS, CONFIG_START_DATE } from './config.js';
 import { CALENDAR_STRUCTURE_SETS, COLOR_THEMES, DEFAULT_EVENTS, DEFAULT_EVENT_SOURCE_CALENDARS, SEASON_SETS, script_name, state_name } from './constants.js';
-import { getWorld } from './worlds/index.js';
+import { getEngineId, getStructuralSlot, getWorld } from './worlds/index.js';
 import { colorsAPI, resolveColor } from './color.js';
 import { _invalidateSerialCache } from './date-math.js';
 import { DaySpec, Parse } from './parsing.js';
@@ -148,9 +149,35 @@ export function sourceSuppressionState(sourceKey){
   };
 }
 
+/* Event source keys are world-prefixed ('eberron:sharn') because engine
+ * source names collide across worlds ('historical' ships in five). The
+ * prefix is INTERNAL — display and the `!cal source …` command surface
+ * use the bare name via sourceDisplayLabel / resolveSourceKeyInput. */
 var DEFAULT_EVENT_SOURCE_PRIORITY_BY_SYSTEM = {
-  eberron: ['khorvaire', 'sovereign host', 'sharn', 'dark six', 'silver flame', 'stormreach']
+  eberron: [
+    'eberron:khorvaire', 'eberron:sovereign host', 'eberron:sharn',
+    'eberron:dark six', 'eberron:silver flame', 'eberron:stormreach',
+  ]
 };
+
+/** Bare display name for a (possibly world-prefixed) source key. */
+export function sourceDisplayLabel(rawKey){
+  var s = String(rawKey || '');
+  var i = s.indexOf(':');
+  return i >= 0 ? s.slice(i + 1) : s;
+}
+
+/** Resolve user input ("Sharn", "dark six") to the internal source key.
+ *  Tries the name verbatim first, then prefixed with the active world. */
+export function resolveSourceKeyInput(name){
+  var key = String(name || '').trim().toLowerCase();
+  if (!key) return key;
+  if (DEFAULT_EVENT_SOURCE_CALENDARS[key]) return key;
+  var sys = String(ensureSettings().calendarSystem || CONFIG_DEFAULTS.calendarSystem).toLowerCase();
+  var prefixed = sys + ':' + key;
+  if (DEFAULT_EVENT_SOURCE_CALENDARS[prefixed]) return prefixed;
+  return key;
+}
 
 function _defaultEventSourcePriorityForSystem(calendarSystem){
   var key = String(calendarSystem || CONFIG_DEFAULTS.calendarSystem).toLowerCase();
@@ -494,6 +521,31 @@ export function applyCalendarSystem(sysKey, varKey?){
   });
 
   _invalidateSerialCache();
+
+  // Align the weekday anchor with engine canon. Continuous-serial weekday
+  // math derives everything from cal.current.day_of_the_week, so anchor it
+  // to the engine's weekday for the current date — otherwise ordinal-
+  // weekday events ("third monday", "every sul") and the grid header can
+  // sit a day off from the web app. month_reset worlds ignore the anchor.
+  (function(){
+    try {
+      var slot = getStructuralSlot(String(sysKey||'').toLowerCase(), cal.current.month|0);
+      if (!slot) return;
+      var t = slot.translation;
+      var mObj = cal.months[cal.current.month|0] || {};
+      var dayClamped = Math.max(1, Math.min(cal.current.day_of_the_month|0, mObj.days|0 || 1));
+      var ed = (t.kind === 'month')
+        ? { kind: 'month', year: cal.current.year|0, monthIndex: t.engineMonthIndex, day: dayClamped }
+        : { kind: 'intercalary', year: (cal.current.year|0) + t.yearDelta, intercalaryKey: t.intercalaryKey, day: dayClamped };
+      var wd = engineDate.weekdayIndex(getEngineId(String(sysKey||'').toLowerCase()), ed as any);
+      if (typeof wd === 'number' && wd >= 0 && wd < cal.weekdays.length){
+        cal.current.day_of_the_week = wd;
+      }
+    } catch (err) {
+      /* Engine validation rejects out-of-range dates (e.g. Shieldmeet in a
+       * non-leap year mid-transition) — keep the existing anchor. */
+    }
+  }());
   return true;
 }
 

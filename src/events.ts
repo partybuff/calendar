@@ -1,7 +1,7 @@
 // Sections 7+9+10+12: Events Model + Range Engine + Occurrences + Event Lists
 import { CONFIG_DEFAULTS, CONFIG_NEARBY_DAYS } from './config.js';
 import { LABELS, PALETTE, RANGE_CAP_YEARS, STYLES, script_name, state_name } from './constants.js';
-import { _sourceAllowedForCalendar, deepClone, defaults, effectiveSuppressedSources, ensureSettings, getCal, titleCase, weekLength } from './state.js';
+import { _sourceAllowedForCalendar, deepClone, defaults, effectiveSuppressedSources, ensureSettings, getCal, sourceDisplayLabel, titleCase, weekLength } from './state.js';
 import { _stableHash, resolveColor } from './color.js';
 import { _daysBeforeYear, _isLeapMonth, _nextActiveMi, _prevActiveMi, _serialCache, daysPerYear, fromSerial, toSerial, todaySerial, weekStartSerial, weekdayIndex } from './date-math.js';
 import { DaySpec, Parse, isTodayVisibleInRange } from './parsing.js';
@@ -19,7 +19,7 @@ export function eventDisplayName(e){
   var base = String(e && e.name || '').trim();
   if (!base) return '';
   var st = ensureSettings();
-  var src = (e && e.source!=null) ? titleCase(String(e.source)) : null;
+  var src = (e && e.source!=null) ? titleCase(sourceDisplayLabel(String(e.source))) : null;
   return (src && st.showSourceLabels) ? (base + ' (' + src + ')') : base;
 }
 
@@ -658,6 +658,12 @@ export function occurrencesInRange(startSerial, endSerial){
     var ye = (e.year==null) ? yEnd   : (e.year|0);
 
     for (var y=ys; y<=ye; y++){
+      /* Leap-gated slots (Shieldmeet, Gregorian Leap Day) only exist in
+       * their active years — the serial math skips them (date-math.ts),
+       * so an occurrence emitted here in an off-year would land on a
+       * nonexistent day. */
+      var moSlot = cal.months[mi];
+      if (moSlot && moSlot.leapEvery && !_isLeapMonth(moSlot, y)) continue;
       var days = ows
         ? (ows.ord === 'every'
             ? _allWeekdaysInMonth(y, mi, ows.wdi)
