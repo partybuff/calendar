@@ -5,8 +5,9 @@
  * holidays). The Roll20 wrapper needs extra per-world data that the engine
  * does not carry: naming overlays for month aliases, color themes per overlay,
  * default render modes, date format styles, weekday abbreviations, capability
- * flags, event source packs, and a structural index map that interleaves
- * engine intercalaries into the wrapper's flat `cal.months` array.
+ * flags, and a structural index map that interleaves engine intercalaries
+ * into the wrapper's flat `cal.months` array. Event content is NOT hosted
+ * here — it is generated from engine `world.holidays` at compose time.
  *
  * Anything that's "canon" — month names, day counts, weekday names, moon
  * data, holiday anchors — comes from the engine. Anything that's Roll20-side
@@ -19,7 +20,6 @@ import type {
   DateFormatStyle,
   NamingOverlay,
   SeasonDefinition,
-  EventPackDefinition,
   WorldCapabilities,
   SetupDefinition,
   MoonSystemDefinition,
@@ -83,12 +83,10 @@ export type WrapperOverlay = {
    *  `legacyKey` names an intercalary that exists ONLY in the old engine
    *  scheme. While it's present the overlay applies unchanged; once the
    *  engine ships the rework (key absent), `canonSeasons` replaces
-   *  `seasons` and event packs listed in `legacyOnlyEventPackKeys` are
-   *  dropped (their month/day anchors reference the old layout). */
+   *  `seasons`. */
   schemeProbe?: {
     legacyKey: string;
     canonSeasons?: SeasonDefinition[];
-    legacyOnlyEventPackKeys?: string[];
   };
 
   /** Naming overlays — alternate month-name sets the GM can swap to.
@@ -117,7 +115,9 @@ export type WrapperOverlay = {
   seasons: SeasonDefinition[];
   defaultSeasonKey: string;
 
-  eventPacks?: EventPackDefinition[];
+  /* No eventPacks here by design: the wrapper hosts NO event content.
+   * Every event is generated from engine `world.holidays` at compose
+   * time (see worlds/index.ts eventPacksFromEngine). */
 
   capabilities: WorldCapabilities;
 
@@ -198,72 +198,6 @@ const eberronOverlay: WrapperOverlay = {
   ],
   defaultSeasonKey: 'eberron',
 
-  eventPacks: [
-    {
-      key: 'sharn', label: 'Sharn', events: [
-        { name: 'Tain Gala', month: 'all', day: 'first far', color: '#F7E7CE', source: 'sharn' },
-        { name: 'Crystalfall', month: 2, day: 9, color: '#D7F3FF', source: 'sharn' },
-        { name: 'Day of Ashes', month: 5, day: 3, color: '#B0BEC5', source: 'sharn' },
-        { name: 'The Race of Eight Winds', month: 7, day: 23, color: '#006D3C', source: 'sharn' },
-      ],
-    },
-    {
-      key: 'khorvaire', label: 'Khorvaire', events: [
-        { name: 'Day of Mourning', month: 2, day: 20, color: '#9E9E9E', source: 'khorvaire' },
-        { name: "Galifar's Throne", month: 6, day: 5, color: '#D4AF37', source: 'khorvaire' },
-        { name: 'Thronehold', month: 11, day: 11, color: '#E80001', source: 'khorvaire' },
-      ],
-    },
-    {
-      key: 'sovereign host', label: 'Sovereign Host', events: [
-        { name: "Onatar's Flame", month: 1, day: 7, color: '#FF6F00', source: 'sovereign host' },
-        { name: "Turrant's Gift", month: 2, day: 14, color: '#B8860B', source: 'sovereign host' },
-        { name: "Olladra's Feast", month: 2, day: 28, color: '#8BC34A', source: 'sovereign host' },
-        { name: "Sun's Blessing", month: 3, day: 15, color: '#FFC107', source: 'sovereign host' },
-        { name: "Aureon's Crown", month: 5, day: 26, color: '#283593', source: 'sovereign host' },
-        { name: 'Brightblade', month: 6, day: 12, color: '#B71C1C', source: 'sovereign host' },
-        { name: "Bounty's Blessing", month: 7, day: 14, color: '#388E3C', source: 'sovereign host' },
-        { name: 'The Hunt', month: 8, day: 4, color: '#1B5E20', source: 'sovereign host' },
-        { name: "Boldrei's Feast", month: 9, day: 9, color: '#F57C00', source: 'sovereign host' },
-        { name: 'Market Day', month: 11, day: 20, color: '#FFD54F', source: 'sovereign host' },
-      ],
-    },
-    {
-      key: 'dark six', label: 'The Dark Six', events: [
-        { name: "Shargon's Bargain", month: 4, day: 13, color: '#006064', source: 'dark six' },
-        { name: 'Second Skin', month: 6, day: 11, color: '#809E62', source: 'dark six' },
-        { name: 'Wildnight', month: 10, day: '18-19', color: '#AD1457', source: 'dark six' },
-        { name: 'Long Shadows', month: 12, day: '26-28', color: '#0D0D0D', source: 'dark six' },
-      ],
-    },
-    {
-      key: 'silver flame', label: 'Silver Flame', events: [
-        { name: 'Rebirth Eve', month: 1, day: 14, color: '#EAF2FF', source: 'silver flame' },
-        { name: "Bright Souls' Day", month: 2, day: 18, color: '#FFF2C6', source: 'silver flame' },
-        { name: 'Tirasday', month: 3, day: 5, color: '#DCEBFF', source: 'silver flame' },
-        { name: 'Initiation Day', month: 4, day: 11, color: '#C7E3FF', source: 'silver flame' },
-        { name: "Baker's Night", month: 5, day: 6, color: '#D8B98F', source: 'silver flame' },
-        { name: 'Promisetide', month: 5, day: 28, color: '#BDE3FF', source: 'silver flame' },
-        { name: 'First Dawn', month: 6, day: 21, color: '#FFD1A6', source: 'silver flame' },
-        { name: 'Silvertide', month: 7, day: 14, color: '#F2F7FF', source: 'silver flame' },
-        { name: 'Victory Day', month: 8, day: 9, color: '#B3E5FC', source: 'silver flame' },
-        { name: "Fathen's Fall", month: 8, day: 25, color: '#E7ECF5', source: 'silver flame' },
-        { name: 'The Ascension', month: 10, day: 1, color: '#E6F0FF', source: 'silver flame' },
-        { name: "Saint Valtros's Day", month: 10, day: 25, color: '#E8ECFF', source: 'silver flame' },
-        { name: 'Rampartide', month: 11, day: 24, color: '#D6F5D6', source: 'silver flame' },
-        { name: 'Khybersef', month: 12, day: 27, color: '#111827', source: 'silver flame' },
-        { name: 'Day of Cleansing Fire', month: 'all', day: 'all sul', color: '#F2F7FF', source: 'silver flame' },
-      ],
-    },
-    {
-      key: 'stormreach', label: 'Stormreach', events: [
-        { name: 'The Burning Titan', month: 3, day: 1, color: '#FF5722', source: 'stormreach' },
-        { name: "Pirate's Moon", month: 5, day: 20, color: '#0E7490', source: 'stormreach' },
-        { name: 'The Annual Games', month: 6, day: '1-14', color: '#2E7D32', source: 'stormreach' },
-        { name: 'Shacklebreak', month: 11, day: 1, color: '#455A64', source: 'stormreach' },
-      ],
-    },
-  ],
 
   capabilities: { moons: true, planes: true },
   setup: {},
@@ -388,20 +322,6 @@ const gregorianOverlay: WrapperOverlay = {
     },
   ],
   defaultSeasonKey: 'gregorian',
-  eventPacks: [
-    {
-      key: 'gregorian_seasons', label: 'Gregorian Seasons', events: [
-        { name: 'First Day of Winter', month: 12, day: 21, color: '#A8DADC', source: 'gregorian' },
-        { name: 'Winter Solstice', month: 12, day: 21, color: '#A8DADC', source: 'gregorian' },
-        { name: 'First Day of Spring', month: 3, day: 20, color: '#A8E6A3', source: 'gregorian' },
-        { name: 'Spring Equinox', month: 3, day: 20, color: '#A8E6A3', source: 'gregorian' },
-        { name: 'First Day of Summer', month: 6, day: 21, color: '#FFD166', source: 'gregorian' },
-        { name: 'Summer Solstice', month: 6, day: 21, color: '#FFD166', source: 'gregorian' },
-        { name: 'First Day of Autumn', month: 9, day: 22, color: '#F4A261', source: 'gregorian' },
-        { name: 'Autumn Equinox', month: 9, day: 22, color: '#F4A261', source: 'gregorian' },
-      ],
-    },
-  ],
   capabilities: { moons: true, planes: false },
   setup: {},
 };
@@ -460,17 +380,6 @@ const greyhawkOverlay: WrapperOverlay = {
     },
   ],
   defaultSeasonKey: 'greyhawk',
-  eventPacks: [
-    {
-      key: 'greyhawk_festivals', label: 'Greyhawk Festivals', events: [
-        { name: 'Needfest begins', month: 1, day: 1, color: '#E0C68A', source: 'greyhawk' },
-        { name: 'Growfest begins', month: 4, day: 1, color: '#A8E6A3', source: 'greyhawk' },
-        { name: 'Richfest begins', month: 7, day: 1, color: '#FFD700', source: 'greyhawk' },
-        { name: 'Midsummer', month: 7, day: 4, color: '#FFD700', source: 'greyhawk' },
-        { name: 'Brewfest begins', month: 10, day: 1, color: '#D2691E', source: 'greyhawk' },
-      ],
-    },
-  ],
   capabilities: { moons: true, planes: false },
   setup: {},
 };
@@ -550,16 +459,6 @@ const dragonlanceOverlay: WrapperOverlay = {
     },
   ],
   defaultSeasonKey: 'dragonlance',
-  eventPacks: [
-    {
-      key: 'dragonlance_calendar', label: 'Krynnish Calendar Events', events: [
-        { name: 'Yule', month: 1, day: 1, color: '#A8DADC', source: 'dragonlance' },
-        { name: 'Spring Dawning', month: 3, day: 1, color: '#A8E6A3', source: 'dragonlance' },
-        { name: 'Midsummer', month: 6, day: 14, color: '#FFD700', source: 'dragonlance' },
-        { name: 'Harvest Home', month: 9, day: 14, color: '#F4A261', source: 'dragonlance' },
-      ],
-    },
-  ],
   capabilities: { moons: true, planes: false },
   setup: {
     extraSteps: [
@@ -622,18 +521,6 @@ const exandriaOverlay: WrapperOverlay = {
     },
   ],
   defaultSeasonKey: 'exandria',
-  eventPacks: [
-    {
-      key: 'exandria_holidays', label: 'Exandrian Holidays', events: [
-        { name: 'New Dawn', month: 1, day: 1, color: '#FFD700', source: 'exandria' },
-        { name: 'Hillsgold', month: 1, day: 27, color: '#DAA520', source: 'exandria' },
-        { name: 'Day of Challenging', month: 3, day: 7, color: '#CD5C5C', source: 'exandria' },
-        { name: "Harvest's Close", month: 8, day: 3, color: '#F4A261', source: 'exandria' },
-        { name: 'Zenith', month: 7, day: 26, color: '#FFD700', source: 'exandria' },
-        { name: 'The Crystalheart', month: 11, day: 11, color: '#87CEEB', source: 'exandria' },
-      ],
-    },
-  ],
   capabilities: { moons: true, planes: false },
   setup: {},
 };
@@ -687,17 +574,6 @@ const mystaraOverlay: WrapperOverlay = {
     },
   ],
   defaultSeasonKey: 'mystara',
-  eventPacks: [
-    {
-      key: 'mystara_holidays', label: 'Mystaran Holidays', events: [
-        { name: 'New Year', month: 1, day: 1, color: '#FFD700', source: 'mystara' },
-        { name: 'Vernal Equinox', month: 3, day: 14, color: '#A8E6A3', source: 'mystara' },
-        { name: 'Summer Solstice', month: 6, day: 14, color: '#FFD166', source: 'mystara' },
-        { name: 'Autumnal Equinox', month: 9, day: 14, color: '#F4A261', source: 'mystara' },
-        { name: 'Winter Solstice', month: 12, day: 14, color: '#A8DADC', source: 'mystara' },
-      ],
-    },
-  ],
   capabilities: { moons: true, planes: false },
   setup: {},
 };
@@ -751,10 +627,6 @@ const birthrightOverlay: WrapperOverlay = {
         hemisphereAware: false,
       },
     ],
-    /* The legacy festival pack anchors month indexes into the OLD layout;
-     * under the rework those point at the wrong months. Canon festival
-     * content arrives via the engine-holiday mirror (separate change). */
-    legacyOnlyEventPackKeys: ['birthright_festivals'],
   },
   weekdayProgressionMode: 'continuous_serial',
   intercalaryRenderMode: 'regular_grid',
@@ -776,16 +648,6 @@ const birthrightOverlay: WrapperOverlay = {
     },
   ],
   defaultSeasonKey: 'birthright',
-  eventPacks: [
-    {
-      key: 'birthright_festivals', label: 'Cerilian Festivals', events: [
-        { name: 'Erntenir (Harvest Festival)', month: 2, day: 1, color: '#DAA520', source: 'birthright' },
-        { name: 'Haelynir (Day of the Sun)', month: 5, day: 1, color: '#FFD700', source: 'birthright' },
-        { name: 'Midsummer', month: 8, day: 1, color: '#FF6347', source: 'birthright' },
-        { name: 'Midwinter', month: 11, day: 1, color: '#87CEEB', source: 'birthright' },
-      ],
-    },
-  ],
   capabilities: { moons: true, planes: false },
   setup: {},
 };

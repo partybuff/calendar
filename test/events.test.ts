@@ -54,23 +54,23 @@ describe("Events", () => {
 
   it("restores auto-suppressed calendar sources when switching away and back", () => {
     freshInstall();
-    const initial = getCal().events.filter((evt: any) => evt.source === "sharn").length;
+    const initial = getCal().events.filter((evt: any) => evt.source === "eberron:sharn").length;
     assert(initial > 0, "expected Eberron-only default events at baseline");
     applyCalendarSystem("gregorian", "standard");
-    const suppressed = getCal().events.filter((evt: any) => evt.source === "sharn").length;
+    const suppressed = getCal().events.filter((evt: any) => evt.source === "eberron:sharn").length;
     assertEquals(suppressed, 0);
     applyCalendarSystem("eberron", "standard");
-    const restored = getCal().events.filter((evt: any) => evt.source === "sharn").length;
+    const restored = getCal().events.filter((evt: any) => evt.source === "eberron:sharn").length;
     assert(restored > 0, "switching back should restore automatically allowed default sources");
   });
 
   it("keeps manual source suppression across calendar switches", () => {
     freshInstall();
     const manual = getManualSuppressedSources();
-    manual.sharn = 1;
+    manual["eberron:sharn"] = 1;
     applyCalendarSystem("gregorian", "standard");
     applyCalendarSystem("eberron", "standard");
-    const restored = getCal().events.filter((evt: any) => evt.source === "sharn").length;
+    const restored = getCal().events.filter((evt: any) => evt.source === "eberron:sharn").length;
     assertEquals(restored, 0, "manually suppressed sources should stay suppressed after calendar changes");
   });
 });
