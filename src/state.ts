@@ -16,17 +16,29 @@ import { _getSeasonLabel, currentDateLabel, sendCurrentDate } from './ui.js';
  * 2) DEFAULT STATE FACTORY
  * ==========================================================================*/
 
+/** Copy the optional year-cadence fields (engine `year_cadence` holidays)
+ *  from a source event onto a reconstructed record. Kept lean — the fields
+ *  are only present on cadence events (Night of the Eye), so ordinary
+ *  records stay two fields smaller in persisted state. */
+export function _withCadence(rec, src){
+  if (src && src.everyYears){
+    rec.everyYears = src.everyYears|0;
+    rec.anchorYear = src.anchorYear|0;
+  }
+  return rec;
+}
+
 export function _flattenSources(map){
   var out = [];
   Object.keys(map).forEach(function(src){
     (map[src]||[]).forEach(function(e){
-      out.push({
+      out.push(_withCadence({
         name: String(e.name||''),
         month: e.month,
         day: e.day,
         color: e.color,
         source: src
-      });
+      }, e));
     });
   });
   return out;
@@ -597,14 +609,14 @@ export function checkInstall(){
         monthsList = [m];
       }
       monthsList.forEach(function(m){
-        out.push({
+        out.push(_withCadence({
           name: String(e.name||''),
           month: m,
           day: e.day,
           year: null,
           color: resolveColor(e.color) || null,
           source: (e.source != null) ? String(e.source) : null
-        });
+        }, e));
       });
     });
     cal.events = out;
@@ -613,14 +625,14 @@ export function checkInstall(){
       var lim = Math.max(1, cal.months.length);
       var m = clamp(parseInt(e.month,10)||1, 1, lim);
       var yr = (isFinite(parseInt(e.year,10)) ? (parseInt(e.year,10)|0) : null);
-      return {
+      return _withCadence({
         name: String(e.name||''),
         month: m,
         day: e.day,
         year: yr,
         color: resolveColor(e.color) || null,
         source: (e.source != null) ? String(e.source) : null
-      };
+      }, e);
     });
 
     // backfill colors from defaults if missing
@@ -707,14 +719,14 @@ export function refreshCalendarState(silent){
       ? String(e.day).toLowerCase().trim()
       : (DaySpec.normalize(e.day, cal.months[m-1].days) || String(DaySpec.first(e.day)));
     var yr = (e.year==null) ? null : (parseInt(e.year,10)|0);
-    return {
+    return _withCadence({
       name: String(e.name||''),
       month: m,
       day: daySpec,
       year: yr,
       color: resolveColor(e.color) || null,
       source: (e.source != null) ? String(e.source) : null
-    };
+    }, e);
   });
 
   // deduplicate

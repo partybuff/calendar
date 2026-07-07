@@ -172,6 +172,11 @@ export type DefaultEvent = {
   day: string | number;
   color?: string;
   source: string;
+  /** Year cadence (engine `year_cadence` holidays, e.g. Night of the Eye).
+   *  When set, the event occurs only in years where
+   *  (year - anchorYear) % everyYears === 0. Absent = every year. */
+  everyYears?: number;
+  anchorYear?: number;
 };
 
 export type EventPackDefinition = {
