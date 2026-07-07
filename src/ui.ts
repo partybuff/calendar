@@ -1,6 +1,6 @@
 // Sections 13+15+16: Roll20 State Interaction & UI + Themes + GM Buttons
 import { CALENDAR_SYSTEMS, CALENDAR_SYSTEM_ORDER, CONFIG_DEFAULTS } from './config.js';
-import { COLOR_THEMES, LABELS, NAMED_COLORS, SEASON_SETS, STYLES, THEME_ORDER, script_name, state_name } from './constants.js';
+import { COLOR_THEMES, LABELS, NAMED_COLORS, SEASON_SETS, STYLES, THEME_LABELS, THEME_ORDER, script_name, state_name } from './constants.js';
 import { _seasonNames, _sourceAllowedForCalendar, applySeasonSet, deepClone, defaults, ensureSettings, getCal, refreshAndSend, refreshCalendarState, titleCase } from './state.js';
 import { popColorIfPresent, resolveColor, sanitizeHexColor } from './color.js';
 import { _isLeapMonth, _nextActiveMi, _prevActiveMi, fromSerial, regularMonthIndex, toSerial, todaySerial, weekdayIndex } from './date-math.js';
@@ -458,7 +458,7 @@ export function themeListHtml(readOnly?){
   if(!names.length) return '<div style="opacity:.7;">No themes available.</div>';
 
   var rows = names.map(function(n){
-    var label = titleCase(n);
+    var label = THEME_LABELS[n] || titleCase(n);
     var head = readOnly
       ? '<b>'+esc(label)+':</b>' + (n===cur ? ' <span style="opacity:.7">(current)</span>' : '')
       : button('Set '+label+':', 'theme '+n) + (n===cur ? ' <span style="opacity:.7">(current)</span>' : '');

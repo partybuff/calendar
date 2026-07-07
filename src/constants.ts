@@ -4,6 +4,7 @@
 // canonical world data (months, intercalaries, moon cycles, holidays) now
 // lives in `@partybuff/calendar-engine` and is consumed via `src/worlds/`.
 
+import { palettes } from '@partybuff/calendar-engine';
 import { CONFIG_ERA_LABEL } from './config.js';
 import { getStructuralArray, WORLD_ORDER, WORLDS } from './worlds/index.js';
 
@@ -117,54 +118,29 @@ export var CALENDAR_STRUCTURE_SETS: Record<string, any> = (function(){
 }());
 
 /* --- Color themes ---------------------------------------------------------*/
-// Switchable live via !cal theme. One hex color per month.
-export var COLOR_THEMES = {
-  seasons: [
-    "#FFFFFF","#CBD5E1","#D8F3DC","#FFB7C5","#E6E6FA","#FFC54D",
-    "#50C878","#64B5F6","#B38E3C","#FF7518","#8B5A2B","#475569"
-  ],
-  lunar: [
-    "#F5F5FA","#FFC68A","#D3D3D3","#C0C0C0","#E6E6FA","#FFD96B",
-    "#F5F5F5","#DCDCDC","#9AC0FF","#696969","#FF4500","#A9A9A9"
-  ],
-  druidic: [
-    "#F2F7FF","#C9D6C3","#D8F3DC","#D8CFEA","#9EC5E8","#FFC54D",
-    "#63D2FF","#50C878","#2E3A8C","#FF7518","#E6E6FA","#E8EDF2"
-  ],
-  halfling: [
-    "#E8EEF3","#BDE0FE","#C7CBD1","#2F855A","#F48FB1","#BF946A",
-    "#D6C151","#8B0000","#F3ECDB","#8E3B46","#C7C3E3","#6B7280"
-  ],
-  dwarven: [
-    "#0D0D0D","#2F343B","#7A4E1D","#7F8999","#C0C0C0","#FFB11B",
-    "#E5E4E2","#0A3A8C","#064E3B","#FF7518","#C21807","#DDEAF7"
-  ],
-  birthstones: [
-    "#7A1E2C","#8E5AC8","#66E5D9","#F2FBFF","#00A86B","#F7F3EE",
-    "#D0002A","#A8E100","#0A4AA6","#E83E8C","#FFA726","#00B8D4"
-  ],
-  greyhawk: [
-    "#E8EDF3","#C9D6E3","#A8E6A3","#D8F3DC","#B5D89A","#FFC54D",
-    "#FFD700","#64B5F6","#F4A261","#8B5A2B","#B38E3C","#475569"
-  ],
-  dragonlance: [
-    "#C0D6E4","#8FAABB","#C8E6C9","#A5D6A7","#E6E6FA","#FFD54F",
-    "#FFB74D","#E57373","#FFCC80","#CE93D8","#78909C","#546E7A"
-  ],
-  exandria: [
-    "#E3F2FD","#BBDEFB","#C8E6C9","#A5D6A7","#FFF9C4","#FFE082",
-    "#FFAB40","#EF9A9A","#CE93D8","#B39DDB","#90A4AE"
-  ],
-  mystara: [
-    "#E0F7FA","#B2EBF2","#C8E6C9","#A5D6A7","#DCEDC8","#FFF9C4",
-    "#FFE082","#FFCC80","#FFAB91","#BCAAA4","#B0BEC5","#78909C"
-  ],
-  birthright: [
-    "#D7CCC8","#BCAAA4","#C8E6C9","#A5D6A7","#AED581","#FFEE58",
-    "#FFD54F","#FFB74D","#FF8A65","#A1887F","#90A4AE","#78909C"
-  ]
+// Month-header palettes, sourced from the engine so the Roll20 grid matches
+// the web app exactly. Engine 0.27.0 renamed the palette keys to
+// colour-character names (druidic→woodland, halfling→plains, dwarven→
+// gemstones, greyhawk→meadow, dragonlance→twilight, exandria→pastel,
+// mystara→seaglass, birthright→harvest; seasons/lunar/birthstones
+// unchanged) — the wrapper follows the engine's keys and colours rather
+// than carrying its own copy. Switchable live via !cal theme.
+export var COLOR_THEMES: Record<string, string[]> = (function(){
+  var out: Record<string, string[]> = {};
+  var keys = palettes.keys();
+  for (var i = 0; i < keys.length; i++) out[keys[i]] = palettes.get(keys[i]).slice();
+  return out;
+}());
+export var THEME_ORDER = palettes.keys().slice();
+// Display labels for the theme picker. The engine ships palette KEYS only;
+// labels are presentation and are mirrored from the web app's PALETTE_LABELS
+// (apps/web/.../CalendarSettingsControls.tsx). Any key without an entry
+// falls back to title-cased key text.
+export var THEME_LABELS: Record<string, string> = {
+  seasons: 'Seasons', lunar: 'Lunar', woodland: 'Woodland', plains: 'Great Plains',
+  gemstones: 'Gemstones', birthstones: 'Birthstones', meadow: 'Meadow',
+  twilight: 'Twilight', pastel: 'Pastel', seaglass: 'Seaglass', harvest: 'Harvest',
 };
-export var THEME_ORDER = ['seasons','lunar','druidic','halfling','dwarven','birthstones','greyhawk','dragonlance','exandria','mystara','birthright'];
 /* --- Named colors for events ----------------------------------------------*/
 // Use by name in event commands: !cal add March 14 Feast emerald
 export var NAMED_COLORS: Record<string, string> = {
