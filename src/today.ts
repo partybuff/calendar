@@ -964,8 +964,20 @@ export var commands = {
   calendar: { gm:true, run: function(m, a){
     var sysKey = (a[2]||'').toLowerCase();
     var varKey = (a[3]||'').toLowerCase();
+    var curSys = ensureSettings().calendarSystem;
+    // No/unknown world → show the current world's name-variant picker.
     if (!sysKey || !CALENDAR_SYSTEMS[sysKey]){
       return whisper(m.who, calendarSystemListHtml());
+    }
+    // Switching to a DIFFERENT world is not a live setting — it changes the
+    // world's dates and data, so it goes through resetcalendar → setup.
+    // Only name-variant swaps within the current world stay live.
+    if (sysKey !== curSys){
+      return whisper(m.who,
+        'Switching to <b>'+esc(CALENDAR_SYSTEMS[sysKey].label||titleCase(sysKey))+'</b> '+
+        'changes the world and its dates — it isn’t a live setting. '+
+        'Reset with <code>!cal resetcalendar</code>, then choose it during setup. '+
+        '(Name variants for the current calendar: <code>!cal calendar</code>.)');
     }
     var sys = CALENDAR_SYSTEMS[sysKey];
     if (varKey && !(sys.variants && sys.variants[varKey])){

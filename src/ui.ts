@@ -753,7 +753,7 @@ export function helpThemesMenu(m){
 export function helpCalendarSystemMenu(m){
   var ro = !playerIsGM(m.playerid);
   whisperUi(m.who,
-    _menuBox(ro ? 'Supported Settings (view only)' : 'Supported Settings', calendarSystemListHtml(ro))
+    _menuBox(ro ? 'Name Variants (view only)' : 'Name Variants', calendarSystemListHtml(ro))
   );
 }
 
@@ -771,31 +771,35 @@ export function helpEventColorsMenu(m){
   );
 }
 
+// Name variants for the CURRENT world only — a cosmetic month-name swap
+// (e.g. Eberron's Galifar / Druidic / Halfling / Dwarven) that leaves dates
+// unchanged. Switching to a different world/calendar is not a live setting;
+// it happens through `!cal resetcalendar` → setup, because it changes the
+// world's dates and data.
 export function calendarSystemListHtml(readOnly?){
-  var st   = ensureSettings();
-  var keys = _orderedKeys(CALENDAR_SYSTEMS, CALENDAR_SYSTEM_ORDER);
-  if (!keys.length) return '<div style="opacity:.7;">No calendar systems defined.</div>';
+  var st  = ensureSettings();
+  var sysKey = st.calendarSystem;
+  var sys = CALENDAR_SYSTEMS[sysKey];
+  if (!sys) return '<div style="opacity:.7;">No calendar active.</div>';
+  var sLabel = esc(sys.label || titleCase(sysKey));
+  var varKeys = sys.variants ? Object.keys(sys.variants) : [];
 
-  var rows = keys.map(function(sysKey){
-    var sys   = CALENDAR_SYSTEMS[sysKey];
-    var sLabel = esc(sys.label || titleCase(sysKey));
-    var desc   = sys.description ? '<div style="font-size:.82em;opacity:.65;margin-bottom:4px;">'+esc(sys.description)+'</div>' : '';
-    var varKeys = sys.variants ? Object.keys(sys.variants) : [];
-    var varRows = varKeys.map(function(vk){
-      var v     = sys.variants[vk];
-      var vLabel = esc(v.label || titleCase(vk));
-      var isCur  = st.calendarSystem === sysKey && st.calendarVariant === vk;
-      var head   = readOnly
-        ? '<b>'+vLabel+'</b>'+(isCur?' <span style="opacity:.7">(current)</span>':'')
-        : button(vLabel, 'calendar '+sysKey+' '+vk)+(isCur?' <span style="opacity:.7">(current)</span>':'');
-      var preview = (v.monthNames||[]).slice(0,4).map(esc).join(', ')+(v.monthNames&&v.monthNames.length>4?' …':'');
-      return '<div style="margin:3px 0 3px 8px;">'+head+'<br><div style="font-size:.82em;opacity:.7;">'+preview+'</div></div>';
-    });
-    return '<div style="margin:8px 0;">'+
-      '<div style="font-weight:bold;margin-bottom:2px;">'+sLabel+'</div>'+
-      desc + varRows.join('') +
-      '</div>';
+  var varRows = varKeys.map(function(vk){
+    var v      = sys.variants[vk];
+    var vLabel = esc(v.label || titleCase(vk));
+    var isCur  = st.calendarVariant === vk;
+    var head   = readOnly
+      ? '<b>'+vLabel+'</b>'+(isCur?' <span style="opacity:.7">(current)</span>':'')
+      : button(vLabel, 'calendar '+sysKey+' '+vk)+(isCur?' <span style="opacity:.7">(current)</span>':'');
+    var preview = (v.monthNames||[]).slice(0,4).map(esc).join(', ')+(v.monthNames&&v.monthNames.length>4?' …':'');
+    return '<div style="margin:3px 0 3px 8px;">'+head+'<br><div style="font-size:.82em;opacity:.7;">'+preview+'</div></div>';
   });
 
-  return '<div style="margin:4px 0;"><b>Supported Settings</b></div>'+rows.join('<hr style="border:none;border-top:1px solid #444;margin:4px 0;">');
+  var note = '<div style="font-size:.8em;opacity:.6;margin-top:8px;">Name variants swap the month-name set only — dates don’t change. To switch to a different calendar, reset with <code>!cal resetcalendar</code> and pick one during setup.</div>';
+
+  return '<div style="margin:4px 0;"><b>Name Variants — '+sLabel+'</b></div>'+
+    (varRows.length > 1
+      ? varRows.join('')
+      : '<div style="opacity:.7;margin-left:8px;">This calendar has a single name set.</div>')+
+    note;
 }
