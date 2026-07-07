@@ -1,7 +1,7 @@
 // Sections 2-3: Default State Factory + State & Settings
 import { date as engineDate } from '@partybuff/calendar-engine';
 import { CALENDAR_SYSTEMS, CONFIG_DEFAULTS, CONFIG_MONTH_LENGTHS, CONFIG_START_DATE } from './config.js';
-import { CALENDAR_STRUCTURE_SETS, COLOR_THEMES, DEFAULT_EVENTS, DEFAULT_EVENT_SOURCE_CALENDARS, SEASON_SETS, script_name, state_name } from './constants.js';
+import { CALENDAR_STRUCTURE_SETS, COLOR_THEMES, DEFAULT_EVENTS, DEFAULT_EVENT_SOURCE_CALENDARS, LABELS, SEASON_SETS, script_name, state_name } from './constants.js';
 import { getEngineId, getStructuralSlot, getWorld } from './worlds/index.js';
 import { colorsAPI, resolveColor } from './color.js';
 import { _invalidateSerialCache } from './date-math.js';
@@ -490,17 +490,16 @@ export function applyCalendarSystem(sysKey, varKey?){
   // --- Weekdays -------------------------------------------------------------
   cal.weekdays = sys.weekdays.slice();
 
-  // --- Seasons --------------------------------------------------------------
-  // If the user has never explicitly set a season variant, or is switching to a new
-  // calendar family, adopt the new calendar's default season set.
-  var _prevSeason = st.seasonVariant;
-  var _prevSys2   = st.calendarSystem || '';
-  var _isNewSys   = _prevSys2 !== sysKey;
-  if (!_prevSeason || _isNewSys){
-    st.seasonVariant = sys.defaultSeason || CONFIG_DEFAULTS.seasonVariant;
-  }
-  var seasonKey = st.seasonVariant;
-  applySeasonSet(seasonKey);
+  // --- Seasons (derived, not selectable) ------------------------------------
+  // The season *set* is no longer a user optionality — the picker and
+  // `!cal seasons` command were retired. Each world's season labels are a
+  // fixed, canonical property; always apply the world's default set. The
+  // derived season label still shows on the panel (and hemisphere still
+  // shifts the gregorian transition table); only the *choice* is gone.
+  var _prevSys2 = st.calendarSystem || '';
+  var _isNewSys = _prevSys2 !== sysKey;
+  st.seasonVariant = sys.defaultSeason || CONFIG_DEFAULTS.seasonVariant;
+  applySeasonSet(st.seasonVariant);
 
   // --- Color theme ----------------------------------------------------------
   // colorForMonth() calls effectiveColorTheme() which reads st.colorTheme
@@ -533,6 +532,25 @@ export function applyCalendarSystem(sysKey, varKey?){
   });
 
   _invalidateSerialCache();
+
+  // Refresh the era suffix to the active world (DR / CY / AC / PD / MR / CE /
+  // YK / …) on every apply, so a reload of a saved non-Eberron world doesn't
+  // keep rendering "YK". Sourced from the engine world's eraLabel.
+  var _wActive = getWorld(sysKey);
+  if (_wActive && _wActive.eraLabel) LABELS.era = _wActive.eraLabel;
+
+  // On a genuine WORLD change, adopt that world's canonical engine default
+  // date — otherwise the year stays on the previous world's (e.g. Faerûn
+  // would open on 998 instead of 1372 DR, Greyhawk on Needfest instead of
+  // Fireseek 1). Gated on _isNewSys so a same-world re-apply (checkInstall
+  // reloads, variant swaps) never clobbers the GM's saved date. Token setup,
+  // when it existed, called setDate() immediately after — this is the
+  // canonical default the calendar always loads a fresh world into.
+  if (_isNewSys && _wActive && _wActive.defaultDate){
+    cal.current.year             = _wActive.defaultDate.year | 0;
+    cal.current.month            = _wActive.defaultDate.month | 0;
+    cal.current.day_of_the_month = _wActive.defaultDate.day | 0;
+  }
 
   // Align the weekday anchor with engine canon. Continuous-serial weekday
   // math derives everything from cal.current.day_of_the_week, so anchor it

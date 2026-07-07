@@ -8,7 +8,7 @@ import { _invalidateSerialCache, _isLeapMonth, fromSerial, toSerial, todaySerial
 import { DaySpec, Parse } from './parsing.js';
 import { _deliverAdditionalCalendarRange, _deliverTopLevelCalendarRange, buildAdditionalRangesCommand, buildCalendarsHtmlForSpec, defaultKeyFor, eventDisplayName, getEventColor, mergeInNewDefaultEvents, occurrencesInRange } from './events.js';
 import { button, clamp, esc, eventLineHtml, _monthRangeFromSerial } from './rendering.js';
-import { _displayMonthDayParts, _menuBox, _serialToDateSpec, _shiftSerialByMonth, activeEffectsPanelHtml, additionalHubHtml, calendarSystemListHtml, currentDateLabel, dateLabelFromSerial, formalCurrentDateLabel, helpCalendarSystemMenu, helpEventColorsMenu, helpRootMenu, helpSeasonsMenu, helpThemesMenu, nextForDayOnly, seasonSetListHtml, sendCurrentDate, setDate, stepDays, taskCardHtml, themeListHtml } from './ui.js';
+import { _displayMonthDayParts, _menuBox, _serialToDateSpec, _shiftSerialByMonth, activeEffectsPanelHtml, additionalHubHtml, calendarSystemListHtml, currentDateLabel, dateLabelFromSerial, formalCurrentDateLabel, helpCalendarSystemMenu, helpEventColorsMenu, helpRootMenu, helpThemesMenu, nextForDayOnly, sendCurrentDate, setDate, stepDays, taskCardHtml, themeListHtml } from './ui.js';
 import { _normalizePackedWords, _playerTodayHtml, _showDefaultCalView, send, whisper, whisperUi } from './commands.js';
 import { _getMoonSys, _moonLastEvent, _moonNextEvent, _moonPeakPhaseDay, _moonPhaseEmoji, _moonPhaseLabel, handleMoonCommand, invalidateMoonModel, moonEnsureSequences, moonPhaseAt } from './moon.js';
 import { getPlanarState, _getAllPlaneData, _getPlaneData, handlePlanesCommand } from './planes.js';
@@ -146,7 +146,7 @@ export function _todayAllHtml(){
   // Management dropdown (GM only)
   btns.push('<div style="border-top:1px solid rgba(0,0,0,.08);margin:6px 0 4px 0;"></div>');
   btns.push('<div style="margin:3px 0;">' +
-    button('Management', 'today manage ?{Action|Enable/Disable Moons,moon toggle|Enable/Disable Planes,planes toggle|Theme,help themes|Calendar System,help calendarsystems|Hemisphere,help hemisphere|Season Set,help seasons|Reset Calendar,help resetconfirm}') +
+    button('Management', 'today manage ?{Action|Enable/Disable Moons,moon toggle|Enable/Disable Planes,planes toggle|Theme,help themes|Name Variants,help calendarsystems|Hemisphere,help hemisphere|Reset Calendar,help resetconfirm}') +
     '</div>');
 
   return _menuBox('Today — ' + esc(_displayMonthDayParts(c.month, c.day_of_the_month).label),
@@ -840,7 +840,6 @@ export var commands = {
       case 'eventcolors': return helpEventColorsMenu(m);
       case 'calendar':    return helpCalendarSystemMenu(m);
       case 'themes':      return helpThemesMenu(m);
-      case 'seasons':     return helpSeasonsMenu(m);
       case 'root':
       default:            return helpRootMenu(m);
     }
@@ -965,8 +964,20 @@ export var commands = {
   calendar: { gm:true, run: function(m, a){
     var sysKey = (a[2]||'').toLowerCase();
     var varKey = (a[3]||'').toLowerCase();
+    var curSys = ensureSettings().calendarSystem;
+    // No/unknown world → show the current world's name-variant picker.
     if (!sysKey || !CALENDAR_SYSTEMS[sysKey]){
       return whisper(m.who, calendarSystemListHtml());
+    }
+    // Switching to a DIFFERENT world is not a live setting — it changes the
+    // world's dates and data, so it goes through resetcalendar → setup.
+    // Only name-variant swaps within the current world stay live.
+    if (sysKey !== curSys){
+      return whisper(m.who,
+        'Switching to <b>'+esc(CALENDAR_SYSTEMS[sysKey].label||titleCase(sysKey))+'</b> '+
+        'changes the world and its dates — it isn’t a live setting. '+
+        'Reset with <code>!cal resetcalendar</code>, then choose it during setup. '+
+        '(Name variants for the current calendar: <code>!cal calendar</code>.)');
     }
     var sys = CALENDAR_SYSTEMS[sysKey];
     if (varKey && !(sys.variants && sys.variants[varKey])){
@@ -990,16 +1001,6 @@ export var commands = {
       msg += '.';
     }
     whisper(m.who, msg);
-  }},
-
-  seasons: { gm:true, run:function(m, a){
-    var sub = String(a[2]||'').toLowerCase();
-    if (!sub || sub==='list'){ return whisper(m.who, seasonSetListHtml()); }
-    if (!SEASON_SETS[sub]) return whisper(m.who, 'Unknown variant. Options: '+Object.keys(SEASON_SETS).join(', ')+'.');
-    if (!applySeasonSet(sub)){ return whisper(m.who, 'That season set doesn’t fit this calendar.'); }
-    ensureSettings().seasonVariant = sub;
-    refreshAndSend();
-    whisper(m.who, 'Season variant: <b>'+esc(sub)+'</b>.');
   }},
 
   hemisphere: { gm:true, run:function(m, a){

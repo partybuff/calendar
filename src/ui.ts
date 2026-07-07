@@ -1,6 +1,6 @@
 // Sections 13+15+16: Roll20 State Interaction & UI + Themes + GM Buttons
 import { CALENDAR_SYSTEMS, CALENDAR_SYSTEM_ORDER, CONFIG_DEFAULTS } from './config.js';
-import { COLOR_THEMES, LABELS, NAMED_COLORS, SEASON_SETS, STYLES, THEME_ORDER, script_name, state_name } from './constants.js';
+import { COLOR_THEMES, LABELS, NAMED_COLORS, SEASON_SETS, STYLES, THEME_LABELS, THEME_ORDER, script_name, state_name } from './constants.js';
 import { _seasonNames, _sourceAllowedForCalendar, applySeasonSet, deepClone, defaults, ensureSettings, getCal, refreshAndSend, refreshCalendarState, titleCase } from './state.js';
 import { popColorIfPresent, resolveColor, sanitizeHexColor } from './color.js';
 import { _isLeapMonth, _nextActiveMi, _prevActiveMi, fromSerial, regularMonthIndex, toSerial, todaySerial, weekdayIndex } from './date-math.js';
@@ -458,7 +458,7 @@ export function themeListHtml(readOnly?){
   if(!names.length) return '<div style="opacity:.7;">No themes available.</div>';
 
   var rows = names.map(function(n){
-    var label = titleCase(n);
+    var label = THEME_LABELS[n] || titleCase(n);
     var head = readOnly
       ? '<b>'+esc(label)+':</b>' + (n===cur ? ' <span style="opacity:.7">(current)</span>' : '')
       : button('Set '+label+':', 'theme '+n) + (n===cur ? ' <span style="opacity:.7">(current)</span>' : '');
@@ -646,9 +646,7 @@ export function helpStatusSummaryHtml(){
   var overrides = [];
   var defTheme  = variant.colorTheme || '';
   var curTheme  = st.colorTheme || '';
-  if (curTheme && curTheme !== defTheme) overrides.push(esc(titleCase(curTheme)) + ' theme');
-  var defSeason = sys.defaultSeason || CONFIG_DEFAULTS.seasonVariant;
-  if (st.seasonVariant && st.seasonVariant !== defSeason) overrides.push(esc(titleCase(st.seasonVariant)) + ' seasons');
+  if (curTheme && curTheme !== defTheme) overrides.push(esc(THEME_LABELS[curTheme] || titleCase(curTheme)) + ' theme');
 
   var configLine = overrides.length ? overrides.join(' &nbsp;·&nbsp; ') : '';
 
@@ -733,9 +731,8 @@ export function helpRootMenu(m){
       'Reach the high-churn admin tools here and keep deeper configuration inside the existing drill-down menus.',
       [
         mbP(m,'Time','time'),
-        navP(m,'Supported Settings','calendar'),
+        navP(m,'Name Variants','calendar'),
         navP(m,'Themes','themes'),
-        navP(m,'Seasons','seasons'),
         mbP(m,'Effects','effects')
       ],
       'Views: Planes ' + _displayModeLabel(plModeNew) +
@@ -756,7 +753,7 @@ export function helpThemesMenu(m){
 export function helpCalendarSystemMenu(m){
   var ro = !playerIsGM(m.playerid);
   whisperUi(m.who,
-    _menuBox(ro ? 'Supported Settings (view only)' : 'Supported Settings', calendarSystemListHtml(ro))
+    _menuBox(ro ? 'Name Variants (view only)' : 'Name Variants', calendarSystemListHtml(ro))
   );
 }
 
@@ -774,56 +771,35 @@ export function helpEventColorsMenu(m){
   );
 }
 
-export function helpSeasonsMenu(m){
-  var ro = !playerIsGM(m.playerid);
-  whisperUi(m.who,
-    _menuBox(ro ? 'Season Variants (view only)' : 'Season Variants', seasonSetListHtml(ro))
-  );
-}
-
-export function seasonSetListHtml(readOnly?){
-  var st  = ensureSettings();
-  var cur = st.seasonVariant || (CALENDAR_SYSTEMS[st.calendarSystem] || {}).defaultSeason || CONFIG_DEFAULTS.seasonVariant;
-  var names = _orderedKeys(SEASON_SETS, ['eberron','faerun','gregorian','tropical']);
-  if(!names.length) return '<div style="opacity:.7;">No season sets.</div>';
-
-  var rows = names.map(function(n){
-    var label = titleCase(n);
-    var head = readOnly
-      ? '<b>'+esc(label)+':</b>'+(n===cur?' <span style="opacity:.7">(current)</span>':'')
-      : button('Set '+label+':', 'seasons '+n)+(n===cur?' <span style="opacity:.7">(current)</span>':'');
-    var preview = (_seasonNames(n)||[]).map(esc).join(', ');
-    return '<div style="margin:6px 0;">'+ head + '<br><div style="opacity:.85;">'+preview+'</div><br></div>';
-  });
-
-  return '<div style="margin:4px 0;"><b>Season Sets</b></div>'+rows.join('');
-}
-
+// Name variants for the CURRENT world only — a cosmetic month-name swap
+// (e.g. Eberron's Galifar / Druidic / Halfling / Dwarven) that leaves dates
+// unchanged. Switching to a different world/calendar is not a live setting;
+// it happens through `!cal resetcalendar` → setup, because it changes the
+// world's dates and data.
 export function calendarSystemListHtml(readOnly?){
-  var st   = ensureSettings();
-  var keys = _orderedKeys(CALENDAR_SYSTEMS, CALENDAR_SYSTEM_ORDER);
-  if (!keys.length) return '<div style="opacity:.7;">No calendar systems defined.</div>';
+  var st  = ensureSettings();
+  var sysKey = st.calendarSystem;
+  var sys = CALENDAR_SYSTEMS[sysKey];
+  if (!sys) return '<div style="opacity:.7;">No calendar active.</div>';
+  var sLabel = esc(sys.label || titleCase(sysKey));
+  var varKeys = sys.variants ? Object.keys(sys.variants) : [];
 
-  var rows = keys.map(function(sysKey){
-    var sys   = CALENDAR_SYSTEMS[sysKey];
-    var sLabel = esc(sys.label || titleCase(sysKey));
-    var desc   = sys.description ? '<div style="font-size:.82em;opacity:.65;margin-bottom:4px;">'+esc(sys.description)+'</div>' : '';
-    var varKeys = sys.variants ? Object.keys(sys.variants) : [];
-    var varRows = varKeys.map(function(vk){
-      var v     = sys.variants[vk];
-      var vLabel = esc(v.label || titleCase(vk));
-      var isCur  = st.calendarSystem === sysKey && st.calendarVariant === vk;
-      var head   = readOnly
-        ? '<b>'+vLabel+'</b>'+(isCur?' <span style="opacity:.7">(current)</span>':'')
-        : button(vLabel, 'calendar '+sysKey+' '+vk)+(isCur?' <span style="opacity:.7">(current)</span>':'');
-      var preview = (v.monthNames||[]).slice(0,4).map(esc).join(', ')+(v.monthNames&&v.monthNames.length>4?' …':'');
-      return '<div style="margin:3px 0 3px 8px;">'+head+'<br><div style="font-size:.82em;opacity:.7;">'+preview+'</div></div>';
-    });
-    return '<div style="margin:8px 0;">'+
-      '<div style="font-weight:bold;margin-bottom:2px;">'+sLabel+'</div>'+
-      desc + varRows.join('') +
-      '</div>';
+  var varRows = varKeys.map(function(vk){
+    var v      = sys.variants[vk];
+    var vLabel = esc(v.label || titleCase(vk));
+    var isCur  = st.calendarVariant === vk;
+    var head   = readOnly
+      ? '<b>'+vLabel+'</b>'+(isCur?' <span style="opacity:.7">(current)</span>':'')
+      : button(vLabel, 'calendar '+sysKey+' '+vk)+(isCur?' <span style="opacity:.7">(current)</span>':'');
+    var preview = (v.monthNames||[]).slice(0,4).map(esc).join(', ')+(v.monthNames&&v.monthNames.length>4?' …':'');
+    return '<div style="margin:3px 0 3px 8px;">'+head+'<br><div style="font-size:.82em;opacity:.7;">'+preview+'</div></div>';
   });
 
-  return '<div style="margin:4px 0;"><b>Supported Settings</b></div>'+rows.join('<hr style="border:none;border-top:1px solid #444;margin:4px 0;">');
+  var note = '<div style="font-size:.8em;opacity:.6;margin-top:8px;">Name variants swap the month-name set only — dates don’t change. To switch to a different calendar, reset with <code>!cal resetcalendar</code> and pick one during setup.</div>';
+
+  return '<div style="margin:4px 0;"><b>Name Variants — '+sLabel+'</b></div>'+
+    (varRows.length > 1
+      ? varRows.join('')
+      : '<div style="opacity:.7;margin-left:8px;">This calendar has a single name set.</div>')+
+    note;
 }
