@@ -47,9 +47,9 @@ function _welcomeHtml(): string {
     const world = WORLDS[sysKey];
     const label = world ? world.label : sysKey;
     const desc = world ? world.description : '';
-    return '<div style="margin:3px 0;">' +
+    return '<div style="margin:3px 0 8px;">' +
       button(label, 'setup pick ' + sysKey) +
-      (desc ? ' <span style="opacity:.68;font-size:.82em;">' + esc(desc) + '</span>' : '') +
+      (desc ? '<br><span style="opacity:.68;font-size:.82em;">' + esc(desc) + '</span>' : '') +
       '</div>';
   }).join('');
   return _menu(
