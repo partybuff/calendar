@@ -114,6 +114,9 @@ function isLegacyScheme(engine: EngineWorld, overlay: WrapperOverlay): boolean {
  *   floating/weekly             → month 'all' + 'every <weekday>'
  *   floating/nth_weekday_of_every_month → month 'all' + '<nth> <weekday>'
  *   floating/nth_weekday_of_month       → '<nth> <weekday>' on that month
+ *   floating/year_cadence       → 'D' on the month's slot + everyYears /
+ *                                 anchorYear (e.g. Dragonlance Night of the
+ *                                 Eye: every 3rd year from 348, on 10/15)
  *   floating/gregorian_table    → skipped (no recurring-spec equivalent;
  *                                 unused by any shipped world)
  * Fidelity is enforced by test/engine-events-parity.test.ts against the
@@ -145,10 +148,16 @@ function eventPacksFromEngine(
    * mismatches would duplicate events. */
   const weekdayName = (wi: number) => (engine.calendar.weekdays[wi] || '').toLowerCase();
 
-  const bySource = new Map<string, { name: string; month: number | 'all'; day: string; color?: string; source: string }[]>();
+  type GenEvent = {
+    name: string; month: number | 'all'; day: string; color?: string; source: string;
+    everyYears?: number; anchorYear?: number;
+  };
+  const bySource = new Map<string, GenEvent[]>();
   for (const h of holidays) {
     let month: number | 'all' | null = null;
     let day: string | null = null;
+    let everyYears: number | undefined;
+    let anchorYear: number | undefined;
     if (h.kind === 'fixed') {
       month = structMonth.get(h.monthIndex) ?? null;
       day = (h.endDay != null && h.endDay > h.day) ? (h.day + '-' + h.endDay) : String(h.day);
@@ -167,6 +176,18 @@ function eventPacksFromEngine(
         const nth = NTH_WORD[String(r.nth)];
         const m = structMonth.get(r.monthIndex);
         if (nth && m != null) { month = m; day = nth + ' ' + weekdayName(r.weekdayIndex); }
+      } else if ((r as { kind: string }).kind === 'year_cadence') {
+        /* Fires on (monthIndex, day) only in years where
+         * (year - anchorYear) % everyYears === 0. occurrencesInRange /
+         * getEventsFor gate on the everyYears/anchorYear fields.
+         * `year_cadence` was added to the engine's FloatingHolidayRule
+         * union after 0.25.0; the cast keeps this branch compiling against
+         * engine versions whose types predate the kind (where it simply
+         * never matches at runtime). */
+        const yc = r as unknown as { monthIndex: number; day: number; everyYears: number; anchorYear: number };
+        month = structMonth.get(yc.monthIndex) ?? null;
+        day = String(yc.day);
+        if (yc.everyYears > 1) { everyYears = yc.everyYears; anchorYear = yc.anchorYear; }
       }
       /* gregorian_table: intentionally unhandled — see block comment. */
     }
@@ -174,10 +195,9 @@ function eventPacksFromEngine(
 
     const sourceKey = wrapperKey + ':' + (h.source || 'canon');
     if (!bySource.has(sourceKey)) bySource.set(sourceKey, []);
-    const entry: { name: string; month: number | 'all'; day: string; color?: string; source: string } = {
-      name: h.label, month, day, source: sourceKey,
-    };
+    const entry: GenEvent = { name: h.label, month, day, source: sourceKey };
     if (h.color) entry.color = h.color;
+    if (everyYears != null) { entry.everyYears = everyYears; entry.anchorYear = anchorYear; }
     bySource.get(sourceKey)!.push(entry);
   }
   if (!bySource.size) return undefined;

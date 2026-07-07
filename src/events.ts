@@ -1,7 +1,7 @@
 // Sections 7+9+10+12: Events Model + Range Engine + Occurrences + Event Lists
 import { CONFIG_DEFAULTS, CONFIG_NEARBY_DAYS } from './config.js';
 import { LABELS, PALETTE, RANGE_CAP_YEARS, STYLES, script_name, state_name } from './constants.js';
-import { _sourceAllowedForCalendar, deepClone, defaults, effectiveSuppressedSources, ensureSettings, getCal, sourceDisplayLabel, titleCase, weekLength } from './state.js';
+import { _sourceAllowedForCalendar, _withCadence, deepClone, defaults, effectiveSuppressedSources, ensureSettings, getCal, sourceDisplayLabel, titleCase, weekLength } from './state.js';
 import { _stableHash, resolveColor } from './color.js';
 import { _daysBeforeYear, _isLeapMonth, _nextActiveMi, _prevActiveMi, _serialCache, daysPerYear, fromSerial, toSerial, todaySerial, weekStartSerial, weekdayIndex } from './date-math.js';
 import { DaySpec, Parse, isTodayVisibleInRange } from './parsing.js';
@@ -155,14 +155,14 @@ export function mergeInNewDefaultEvents(cal){
       var normDay = DaySpec.canonicalForKey(de.day, maxD);
       var key = m+'|'+String(normDay)+'|ALL|'+String(de.name||'').trim().toLowerCase();
       if (!have[key] && !suppressed[key]) {
-        cal.events.push({
+        cal.events.push(_withCadence({
           name: String(de.name||''),
           month: m,
           day: normDay,
           year: null,
           color: resolveColor(de.color) || null,
           source: (de.source != null) ? String(de.source) : null
-        });
+        }, de));
         have[key] = 1;
       }
     });
@@ -205,6 +205,7 @@ export function getEventsFor(monthIndex, day, year){
     var e = events[i];
     if (((parseInt(e.month,10)||1)-1) !== m) continue;
     if (e.year != null && (e.year|0) !== y) continue;
+    if (e.everyYears && (((y - (e.anchorYear|0)) % e.everyYears) !== 0)) continue;
     var ows = Parse.ordinalWeekday.fromSpec(e.day);
     if (ows){
       if (ows.ord === 'every'){
@@ -658,6 +659,9 @@ export function occurrencesInRange(startSerial, endSerial){
     var ye = (e.year==null) ? yEnd   : (e.year|0);
 
     for (var y=ys; y<=ye; y++){
+      /* Year-cadence holidays (Night of the Eye) only occur every N years
+       * from their anchor — the triple-full conjunction period. */
+      if (e.everyYears && (((y - (e.anchorYear|0)) % e.everyYears) !== 0)) continue;
       /* Leap-gated slots (Shieldmeet, Gregorian Leap Day) only exist in
        * their active years — the serial math skips them (date-math.ts),
        * so an occurrence emitted here in an off-year would land on a

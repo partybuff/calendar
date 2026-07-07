@@ -8,6 +8,7 @@
 // command any more.
 import { describe, it } from "node:test";
 import { strictEqual as assertEquals, ok as assert } from "node:assert/strict";
+import { holidays as engineHolidays } from "@partybuff/calendar-engine";
 import { freshInstall } from "./helpers.js";
 import { toSerial, todaySerial } from "../src/date-math.js";
 import { applyCalendarSystem } from "../src/state.js";
@@ -46,14 +47,32 @@ describe("Moon read API (engine-backed)", () => {
     freshInstall();
     applyCalendarSystem("dragonlance", "standard");
 
-    // Canon Night of the Eye for 346 PC. Engine ships this anchor; no
-    // wrapper-side override or `state.imported.krynnAnchor` is required
-    // for the canon date to register as a triple-full conjunction.
-    const anchorSerial = toSerial(346, 6, 7);
-    for (const moonName of ["Solinari", "Lunitari", "Nuitari"]) {
-      const v = _moonPeakPhaseDay(moonName, anchorSerial);
-      assertEquals(v, "full", `${moonName} should be full on default Night of the Eye`);
+    // The true Night of the Eye is a triple-full conjunction — Solinari,
+    // Lunitari, and Nuitari standing full together — which recurs on the
+    // beat period of their orbits (~every 3 years). Derive the canonical
+    // date(s) from the engine holiday (never hardcode: the anchor is the
+    // engine's to move) and assert the conjunction physically lands on one.
+    // Scanning a multi-year window keeps this stable across engine models
+    // that mark Night of the Eye every year vs. only on the cadence year;
+    // either way the wrapper must surface a real triple-full.
+    const isTripleFull = (serial: number) =>
+      ["Solinari", "Lunitari", "Nuitari"].every(
+        (mn) => _moonPeakPhaseDay(mn, serial) === "full",
+      );
+    let found = null;
+    for (let y = 346; y < 362 && !found; y++) {
+      // Dragonlance has no intercalaries, so wrapper structural month index
+      // equals the engine monthIndex.
+      for (const d of engineHolidays.allOccurrencesIn("dragonlance", y, "night_of_the_eye")) {
+        if (d.kind !== "month") continue; // NotE is always a month-kind date
+        const serial = toSerial(d.year, d.monthIndex, d.day);
+        if (isTripleFull(serial)) { found = d; break; }
+      }
     }
+    assert(
+      found,
+      "engine must ship a Night of the Eye whose date is a genuine triple-full conjunction",
+    );
   });
 
   it("krynnAnchor from a setup token relocates Night of the Eye", () => {
