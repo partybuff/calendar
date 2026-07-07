@@ -646,9 +646,7 @@ export function helpStatusSummaryHtml(){
   var overrides = [];
   var defTheme  = variant.colorTheme || '';
   var curTheme  = st.colorTheme || '';
-  if (curTheme && curTheme !== defTheme) overrides.push(esc(titleCase(curTheme)) + ' theme');
-  var defSeason = sys.defaultSeason || CONFIG_DEFAULTS.seasonVariant;
-  if (st.seasonVariant && st.seasonVariant !== defSeason) overrides.push(esc(titleCase(st.seasonVariant)) + ' seasons');
+  if (curTheme && curTheme !== defTheme) overrides.push(esc(THEME_LABELS[curTheme] || titleCase(curTheme)) + ' theme');
 
   var configLine = overrides.length ? overrides.join(' &nbsp;·&nbsp; ') : '';
 
@@ -733,9 +731,8 @@ export function helpRootMenu(m){
       'Reach the high-churn admin tools here and keep deeper configuration inside the existing drill-down menus.',
       [
         mbP(m,'Time','time'),
-        navP(m,'Supported Settings','calendar'),
+        navP(m,'Name Variants','calendar'),
         navP(m,'Themes','themes'),
-        navP(m,'Seasons','seasons'),
         mbP(m,'Effects','effects')
       ],
       'Views: Planes ' + _displayModeLabel(plModeNew) +
@@ -772,31 +769,6 @@ export function helpEventColorsMenu(m){
   whisperUi(m.who,
     _menuBox('Event Colors', intro + colorsNamedListHtml())
   );
-}
-
-export function helpSeasonsMenu(m){
-  var ro = !playerIsGM(m.playerid);
-  whisperUi(m.who,
-    _menuBox(ro ? 'Season Variants (view only)' : 'Season Variants', seasonSetListHtml(ro))
-  );
-}
-
-export function seasonSetListHtml(readOnly?){
-  var st  = ensureSettings();
-  var cur = st.seasonVariant || (CALENDAR_SYSTEMS[st.calendarSystem] || {}).defaultSeason || CONFIG_DEFAULTS.seasonVariant;
-  var names = _orderedKeys(SEASON_SETS, ['eberron','faerun','gregorian','tropical']);
-  if(!names.length) return '<div style="opacity:.7;">No season sets.</div>';
-
-  var rows = names.map(function(n){
-    var label = titleCase(n);
-    var head = readOnly
-      ? '<b>'+esc(label)+':</b>'+(n===cur?' <span style="opacity:.7">(current)</span>':'')
-      : button('Set '+label+':', 'seasons '+n)+(n===cur?' <span style="opacity:.7">(current)</span>':'');
-    var preview = (_seasonNames(n)||[]).map(esc).join(', ');
-    return '<div style="margin:6px 0;">'+ head + '<br><div style="opacity:.85;">'+preview+'</div><br></div>';
-  });
-
-  return '<div style="margin:4px 0;"><b>Season Sets</b></div>'+rows.join('');
 }
 
 export function calendarSystemListHtml(readOnly?){

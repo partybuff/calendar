@@ -490,17 +490,16 @@ export function applyCalendarSystem(sysKey, varKey?){
   // --- Weekdays -------------------------------------------------------------
   cal.weekdays = sys.weekdays.slice();
 
-  // --- Seasons --------------------------------------------------------------
-  // If the user has never explicitly set a season variant, or is switching to a new
-  // calendar family, adopt the new calendar's default season set.
-  var _prevSeason = st.seasonVariant;
-  var _prevSys2   = st.calendarSystem || '';
-  var _isNewSys   = _prevSys2 !== sysKey;
-  if (!_prevSeason || _isNewSys){
-    st.seasonVariant = sys.defaultSeason || CONFIG_DEFAULTS.seasonVariant;
-  }
-  var seasonKey = st.seasonVariant;
-  applySeasonSet(seasonKey);
+  // --- Seasons (derived, not selectable) ------------------------------------
+  // The season *set* is no longer a user optionality — the picker and
+  // `!cal seasons` command were retired. Each world's season labels are a
+  // fixed, canonical property; always apply the world's default set. The
+  // derived season label still shows on the panel (and hemisphere still
+  // shifts the gregorian transition table); only the *choice* is gone.
+  var _prevSys2 = st.calendarSystem || '';
+  var _isNewSys = _prevSys2 !== sysKey;
+  st.seasonVariant = sys.defaultSeason || CONFIG_DEFAULTS.seasonVariant;
+  applySeasonSet(st.seasonVariant);
 
   // --- Color theme ----------------------------------------------------------
   // colorForMonth() calls effectiveColorTheme() which reads st.colorTheme
