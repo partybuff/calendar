@@ -8,7 +8,7 @@ import { _invalidateSerialCache, _isLeapMonth, fromSerial, toSerial, todaySerial
 import { DaySpec, Parse } from './parsing.js';
 import { _deliverAdditionalCalendarRange, _deliverTopLevelCalendarRange, buildAdditionalRangesCommand, buildCalendarsHtmlForSpec, defaultKeyFor, eventDisplayName, getEventColor, mergeInNewDefaultEvents, occurrencesInRange } from './events.js';
 import { button, clamp, esc, eventLineHtml, _monthRangeFromSerial } from './rendering.js';
-import { _displayMonthDayParts, _menuBox, _serialToDateSpec, _shiftSerialByMonth, activeEffectsPanelHtml, additionalHubHtml, calendarSystemListHtml, currentDateLabel, dateLabelFromSerial, formalCurrentDateLabel, helpCalendarSystemMenu, helpEventColorsMenu, helpRootMenu, helpThemesMenu, nextForDayOnly, sendCurrentDate, setDate, stepDays, taskCardHtml, themeListHtml } from './ui.js';
+import { _displayMonthDayParts, _menuBox, _serialToDateSpec, _shiftSerialByMonth, additionalHubHtml, calendarSystemListHtml, currentDateLabel, dateLabelFromSerial, formalCurrentDateLabel, helpCalendarSystemMenu, helpEventColorsMenu, helpRootMenu, helpThemesMenu, nextForDayOnly, sendCurrentDate, setDate, stepDays, taskCardHtml, themeListHtml } from './ui.js';
 import { _normalizePackedWords, _playerTodayHtml, _showDefaultCalView, send, whisper, whisperUi } from './commands.js';
 import { _getMoonSys, _moonLastEvent, _moonNextEvent, _moonPeakPhaseDay, _moonPhaseEmoji, _moonPhaseLabel, handleMoonCommand, invalidateMoonModel, moonEnsureSequences, moonPhaseAt } from './moon.js';
 import { getPlanarState, _getAllPlaneData, _getPlaneData, handlePlanesCommand } from './planes.js';
@@ -276,25 +276,6 @@ function _eventsPanelHtml(serialArg){
   btns.push('<div style="border-top:1px solid rgba(0,0,0,.08);margin:6px 0 4px 0;"></div>');
   btns.push('<div style="margin:3px 0;">' +
     button('Additional Ranges', buildAdditionalRangesCommand('events ranges', displaySerial)) +
-    '</div>');
-
-  // Management (GM only)
-  btns.push('<div style="border-top:1px solid rgba(0,0,0,.08);margin:6px 0 4px 0;"></div>');
-  btns.push('<div style="margin:3px 0;">' +
-    button('Add Single Event','add ?{Date DD or MM DD or MM DD YYYY} ?{Event Name} ?{Color (hex)|#50C878}') +
-    '</div>');
-  btns.push('<div style="margin:3px 0;">' +
-    button('Add Monthly Event','addmonthly ?{Day DD} ?{Event Name} ?{Color (hex)|#50C878}') +
-    '</div>');
-  btns.push('<div style="margin:3px 0;">' +
-    button('Add Yearly Event','addyearly ?{Month MM} ?{Day DD} ?{Event Name} ?{Color (hex)|#50C878}') +
-    '</div>');
-  btns.push('<div style="border-top:1px solid rgba(0,0,0,.08);margin:6px 0 4px 0;"></div>');
-  btns.push('<div style="margin:3px 0;">' +
-    button('Manage Event Sources','events source') +
-    '</div>');
-  btns.push('<div style="margin:3px 0;">' +
-    button('Hide/Show Event','events list', { icon:'' }) +
     '</div>');
 
   return _menuBox('Events — ' + esc(mobj.name + ' ' + dd.year),
@@ -842,10 +823,6 @@ export var commands = {
   token: function(m){
     handleTokenCommand(m);
   },
-
-  effects: { gm:true, run:function(m){
-    whisperUi(m.who, activeEffectsPanelHtml());
-  }},
 
   help: function(m, a){
     var page = String(a[2]||'').toLowerCase();

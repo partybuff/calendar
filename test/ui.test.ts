@@ -37,9 +37,10 @@ describe("Task-focused UI", () => {
     assertEquals(msg.opts.noarchive, true);
     assert(msg.msg.includes("Set Date"));
     assert(msg.msg.includes("?{Set Date &#40;mm dd yyyy&#41;|"));
-    assert(msg.msg.includes("Prompt !cal add"));
-    assert(msg.msg.includes("Prompt !cal addmonthly"));
-    assert(msg.msg.includes("Prompt !cal addyearly"));
+    // Retired custom-event prompts are gone from Help.
+    assert(!msg.msg.includes("Prompt !cal add"));
+    assert(!msg.msg.includes("Prompt !cal addmonthly"));
+    assert(!msg.msg.includes("Prompt !cal addyearly"));
     assert(msg.msg.includes("Prompt !cal moon on"));
     assert(msg.msg.includes("Prompt !cal planes on"));
     assert(!msg.msg.includes("Prompt !cal set"));
