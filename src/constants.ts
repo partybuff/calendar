@@ -216,7 +216,11 @@ export var STYLES = {
   calCellInner:    'min-height:2em;display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1;padding:1px 0;box-sizing:border-box;position:relative;',
   monthHeaderBase: 'padding:6px;text-align:left;',
   gmbuttonWrap:    'display:inline-block;margin:2px 4px 2px 0;',
-  today:  'position:relative;z-index:10;border-radius:2px;box-shadow:0 3px 8px rgba(0,0,0,.65),0 12px 24px rgba(0,0,0,.35), inset 0 2px 0 rgba(255,255,255,.18);outline:2px solid rgba(0,0,0,.35);outline-offset:1px;box-sizing:border-box;overflow:visible;font-weight:bold;font-size:1.2em;',
+  // NOTE: no font-size bump here. The cell height/min-height are in `em`, so
+  // enlarging the today cell's font-size scaled those dimensions with it —
+  // stretching the whole active-week row taller than the others. The "pop"
+  // is the box-shadow lift + outline + bold, which don't affect cell size.
+  today:  'position:relative;z-index:10;border-radius:2px;box-shadow:0 3px 8px rgba(0,0,0,.65),0 12px 24px rgba(0,0,0,.35), inset 0 2px 0 rgba(255,255,255,.18);outline:2px solid rgba(0,0,0,.35);outline-offset:1px;box-sizing:border-box;overflow:visible;font-weight:bold;',
   past:   'opacity:0.65;',
   future: 'opacity:0.95;'
 };
