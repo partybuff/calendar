@@ -313,6 +313,26 @@ export function getEngineId(wrapperKey: string): EngineWorldId | null {
   return ov ? ov.engineId : null;
 }
 
+/** Engine holiday `description` for an event by its display label, in the
+ *  given wrapper world (case-insensitive). Read live from engine
+ *  `world.holidays`, so editing lore in the engine auto-bumps to Roll20 —
+ *  the wrapper hosts no description text. Null when no holiday matches or the
+ *  matched holiday carries no description. */
+export function engineEventDescription(wrapperKey: string, label: string): string | null {
+  const engineId = getEngineId(wrapperKey);
+  if (!engineId) return null;
+  const target = String(label || '').trim().toLowerCase();
+  if (!target) return null;
+  const engine = engineWorlds.get(engineId);
+  for (const h of (engine.holidays || [])) {
+    if (String((h as { label?: string }).label || '').trim().toLowerCase() === target) {
+      const d = (h as { description?: string }).description;
+      if (d) return d;
+    }
+  }
+  return null;
+}
+
 /* ──────────────────────────────────────────────────────────────────────────
  * Composition: engine World + WrapperOverlay → WorldDefinition
  * ──────────────────────────────────────────────────────────────────────── */
