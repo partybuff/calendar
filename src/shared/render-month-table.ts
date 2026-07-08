@@ -137,7 +137,9 @@ function _headerBarsHtml(bars: PureHeaderBar[], weekdayCount: number): string {
 /* ── Main entry point ──────────────────────────────────────────────── */
 
 export function renderPureMonthTable(input: PureMonthTableInput): string {
-  var wdCount = input.weekdayLabels.length;
+  // Weekless calendars (Barovia) supply no weekday labels; cells are still laid
+  // out on a 7-column week, so default the column count and skip the label row.
+  var wdCount = input.weekdayLabels.length || 7;
   var monthHeaderStyle = colorsAPI.styleMonthHeader(input.monthColor);
 
   var html: string[] = [];
@@ -150,12 +152,14 @@ export function renderPureMonthTable(input: PureMonthTableInput): string {
   html.push('<span style="float:right;">'+esc(input.yearLabel)+'</span>');
   html.push('</div></th></tr>');
 
-  // Weekday headers
-  html.push('<tr>');
-  for (var w = 0; w < wdCount; w++){
-    html.push('<th style="'+STYLES.th+'">'+esc(input.weekdayLabels[w])+'</th>');
+  // Weekday headers — omitted entirely when the calendar has no named weekdays.
+  if (input.weekdayLabels.length){
+    html.push('<tr>');
+    for (var w = 0; w < input.weekdayLabels.length; w++){
+      html.push('<th style="'+STYLES.th+'">'+esc(input.weekdayLabels[w])+'</th>');
+    }
+    html.push('</tr>');
   }
-  html.push('</tr>');
 
   // Header bars (planar events)
   if (input.rawHeaderBarsHtml){

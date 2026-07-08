@@ -23,6 +23,7 @@ export type DateFormatStyle =
   | 'ordinal_of_month'    // "14th of Zarantyr, 998 YK"
   | 'month_day_year'      // "January 14, 2024 CE"
   | 'festival_name_only'  // "Midwinter"
+  | 'nights'              // "21st Night of the Twelfth Moon, 735 BC" (Barovia)
   | 'custom';
 
 export type MonthSlot = {
