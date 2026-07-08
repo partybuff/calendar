@@ -13,6 +13,7 @@ import { _normalizePackedWords, _playerTodayHtml, _showDefaultCalView, send, whi
 import { _getMoonSys, _moonLastEvent, _moonNextEvent, _moonPeakPhaseDay, _moonPhaseEmoji, _moonPhaseLabel, handleMoonCommand, invalidateMoonModel, moonEnsureSequences, moonPhaseAt } from './moon.js';
 import { getPlanarState, _getAllPlaneData, _getPlaneData, handlePlanesCommand } from './planes.js';
 import { enginePlanes, getPlanePositions, serialToCalendarDate } from './engine-opts.js';
+import { engineEventDescription } from './worlds/index.js';
 
 
 // ── Today — Combined detail from all subsystems ────────────────────────
@@ -925,6 +926,42 @@ export var commands = {
     var args = a.slice(2);
     var sub  = (args.shift() || 'current').toLowerCase();
     return invokeEventSub(m, sub, args);
+  }},
+
+  // Whispered detail card for a single named event — its date(s), source,
+  // and engine-sourced lore. Description text is read live from engine
+  // `world.holidays`, so editing lore in the engine auto-bumps to Roll20;
+  // the wrapper hosts no event copy.
+  event: { run:function(m, a){
+    var name = a.slice(2).join(' ').trim();
+    if (!name){ return whisper(m.who, 'Usage: <code>!cal event &lt;name&gt;</code> — shows an event’s dates and lore.'); }
+    var cal = getCal();
+    var lc = name.toLowerCase();
+    var evs = (cal.events||[]).filter(function(e){ return String(e.name||'').toLowerCase() === lc; });
+    if (!evs.length) evs = (cal.events||[]).filter(function(e){ return String(e.name||'').toLowerCase().indexOf(lc) >= 0; });
+    if (!evs.length){ return whisper(m.who, 'No event named <b>'+esc(name)+'</b> on this calendar.'); }
+
+    var displayName = String(evs[0].name||'');
+    var body = '<div style="font-size:1.05em;"><b>'+esc(displayName)+'</b></div>';
+    var srcKey = evs[0].source ? String(evs[0].source) : null;
+    if (srcKey){ body += '<div style="font-size:.82em;opacity:.6;">Source: '+esc(titleCase(sourceDisplayLabel(srcKey)))+'</div>'; }
+
+    var seenD = {}, dateLines = [];
+    for (var i=0;i<evs.length;i++){
+      var e = evs[i];
+      var key = e.month+'|'+e.day;
+      if (seenD[key]) continue; seenD[key]=1;
+      var mObj = cal.months[(e.month|0)-1];
+      dateLines.push(esc((mObj ? mObj.name : ('Month '+e.month)) + ' ' + String(e.day)));
+    }
+    if (dateLines.length){ body += '<div style="font-size:.85em;opacity:.75;margin-top:2px;">'+dateLines.join(' &nbsp;·&nbsp; ')+'</div>'; }
+
+    var desc = engineEventDescription(String(ensureSettings().calendarSystem||''), displayName);
+    body += desc
+      ? '<div style="font-size:.85em;margin-top:6px;line-height:1.4;">'+esc(desc)+'</div>'
+      : '<div style="font-size:.8em;opacity:.5;margin-top:6px;font-style:italic;">No lore recorded for this event yet.</div>';
+
+    return whisper(m.who, _menuBox('📅 '+esc(displayName), body));
   }},
 
   send: { gm:true, run:function(m, a){
