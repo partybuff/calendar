@@ -943,7 +943,10 @@ export var commands = {
 
   send: { gm:true, run:function(m, a){
     var restTokens = _normalizePackedWords(a.slice(2).join(' ')).split(/\s+/).filter(Boolean);
-    if (!restTokens.length){ sendCurrentDate(null, false, { playerid:m.playerid, includeButtons:false }); return; }
+    // Public "today" broadcast: force the full default view so the canon event
+    // list ("Events this month") is always appended, regardless of the GM's
+    // personal density setting. Button-free (/direct strips buttons anyway).
+    if (!restTokens.length){ sendCurrentDate(null, false, { playerid:m.playerid, includeButtons:false, density:'normal' }); return; }
     _deliverTopLevelCalendarRange({ who:m.who, args:restTokens, dest:'broadcast' });
   }},
 

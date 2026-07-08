@@ -6,7 +6,7 @@ import { _stableHash, resolveColor } from './color.js';
 import { _daysBeforeYear, _isLeapMonth, _nextActiveMi, _prevActiveMi, _serialCache, daysPerYear, fromSerial, toSerial, todaySerial, weekStartSerial, weekdayIndex } from './date-math.js';
 import { DaySpec, Parse, isTodayVisibleInRange } from './parsing.js';
 import { _calendarCellInnerHtml, _renderHarptosFestivalStrip, clamp, closeMonthTable, esc, eventLineHtml, formatDateLabel, makeDayCtx, openMonthTable, renderMiniCal, renderMonthTable, tdHtmlForDay, yearHTMLFor } from './rendering.js';
-import { _displayMonthDayParts, _menuBox, currentDateLabel, nextForDayOnly, nextForMonthDay } from './ui.js';
+import { _displayMonthDayParts, _menuBox, currentDateLabel, monthStepperHtml, nextForDayOnly, nextForMonthDay, showNavTailHtml } from './ui.js';
 import { send, sendToAll, whisper } from './commands.js';
 import { intercalaryRenderFor } from './worlds/index.js';
 
@@ -554,8 +554,15 @@ export function _deliverTopLevelCalendarRange(opts){
     return false;
   }
   var calHtml = buildCalendarsHtmlForSpec(spec);
-  if (opts.dest === 'broadcast') sendToAll(calHtml);
-  else whisper(opts.who, calHtml);
+  if (opts.dest === 'broadcast') {
+    // Broadcasts are non-interactive (Roll20 /direct strips buttons), so no
+    // stepper/tail — just the calendar.
+    sendToAll(calHtml);
+  } else {
+    // Interactive show output: walk-in-place stepper (anchored to the shown
+    // month) + a home/Additional tail.
+    whisper(opts.who, calHtml + monthStepperHtml(spec.start) + showNavTailHtml());
+  }
   return true;
 }
 
