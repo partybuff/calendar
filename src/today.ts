@@ -158,7 +158,7 @@ export var USAGE = {
   'events.add':     'Usage: !cal add [MM DD [YYYY] | <MonthName> DD [YYYY] | DD] NAME [#COLOR|color] (DD may be an ordinal like 1st or fourteenth)',
   'events.remove':  'Usage: !cal remove [list | key <KEY> | series <KEY> | <name fragment>]',
   'events.restore': 'Usage: !cal restore [all] [exact] <name...> | restore key <KEY> | restore series <KEY>',
-  'date.set':       'Usage: !cal set [MM] DD [YYYY] or !cal set <MonthName> DD [YYYY] (DD may be an ordinal like 1st or fourteenth)'
+  'date.set':       'Usage: !cal set <Month> DD [YYYY] — Month is a real-month number (1–12) or any month name; DD may be an ordinal (1st, fourteenth). Set an intercalary festival by name: !cal set Midwinter or !cal set Growfest 3'
 };
 
 export function usage(key, m){ whisper(m.who, USAGE[key]); }
