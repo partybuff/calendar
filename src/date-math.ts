@@ -165,7 +165,16 @@ export function weekdayIndex(y, mi, d){
 
 export function weekStartSerial(y, mi, d){
   var st = ensureSettings();
-  var mobj = (getCal().months || [])[mi] || {};
+  var cal = getCal();
+  var mobj = (cal.months || [])[mi] || {};
+  // Weekless calendars (Barovia) have no weekday alignment: each month opens at
+  // day 1 in the top-left and fills fixed 7-cell rows. weekdayIndex is undefined
+  // here (no weekdays), so derive the row start straight from the day-of-month.
+  if (cal.weekdays.length === 0){
+    var wl0 = weekLength();
+    var off0 = ((((parseInt(d, 10) || 1) - 1) % wl0) + wl0) % wl0;
+    return toSerial(y, mi, d) - off0;
+  }
   var progression = weekdayProgressionFor(st.calendarSystem);
   if (progression === 'month_reset' && !mobj.isIntercalary){
     return toSerial(y, mi, d) - ((((parseInt(d, 10) || 1) - 1) % weekLength()) + weekLength()) % weekLength();

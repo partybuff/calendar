@@ -652,6 +652,47 @@ const birthrightOverlay: WrapperOverlay = {
   setup: {},
 };
 
+/* Barovia — Ravenloft / Curse of Strahd. Weekless (no weekday cycle): dates
+ * are "Nth Night of the Mth Moon" (dateFormatStyle 'nights'). 12 moons × 28
+ * days; one moon, full on the 1st of every moon. Primary month names come
+ * from the engine ("First Moon" … "Twelfth Moon"); the Slavic proper names
+ * are a swappable variant. No seasons (gloom demiplane), no holidays. */
+const baroviaOverlay: WrapperOverlay = {
+  wrapperKey: 'barovia',
+  engineId: 'barovia',
+  calendarLabel: 'Barovian Calendar',
+  worldLabel: 'Barovia',
+  // No weekdays — time is reckoned in nights of the moon, not weekdays.
+  weekdayAbbr: {},
+  intercalarySlots: [],
+  namingOverlays: [
+    { key: 'standard', label: 'Moons', monthNames: [], colorTheme: 'lunar', useEngineMonthNames: true },
+    {
+      key: 'slavic', label: 'Slavic Months', colorTheme: 'lunar',
+      // source: community reconstruction (Russian month transliterations).
+      monthNames: [
+        'Yinvar', 'Fivral', 'Mart', 'Apryl', 'Mai', 'Eyune',
+        'Eyule', 'Avgust', 'Sintyavr', 'Octyavr', 'Neyavr', 'Dekavr',
+      ],
+    },
+  ],
+  defaultOverlayKey: 'standard',
+  weekdayProgressionMode: 'continuous_serial',
+  intercalaryRenderMode: 'regular_grid',
+  dateFormatStyle: 'nights',
+  moonOverlays: { anchorStrategy: 'per_moon_anchor', label: 'The Moon' },
+  moonLore: {
+    moon:
+      'Barovia reckons time in moons rather than months: each moon opens on a ' +
+      'full moon and closes on the next, twelve to the year. The overcast sky ' +
+      'rarely reveals it, yet its full nights still stir the wolves.',
+  },
+  seasons: [],
+  defaultSeasonKey: '',
+  capabilities: { moons: true, planes: false },
+  setup: {},
+};
+
 /* ──────────────────────────────────────────────────────────────────────────
  * Registry
  * ──────────────────────────────────────────────────────────────────────── */
@@ -664,12 +705,13 @@ export const OVERLAYS: Record<string, WrapperOverlay> = {
   dragonlance: dragonlanceOverlay,
   exandria:    exandriaOverlay,
   mystara:     mystaraOverlay,
+  barovia:     baroviaOverlay,
   birthright:  birthrightOverlay,
 };
 
 /** Display-order list of wrapper keys for menus and setup. */
 export const OVERLAY_ORDER: string[] = [
   'eberron', 'faerunian',
-  'greyhawk', 'dragonlance', 'exandria', 'mystara', 'birthright',
+  'greyhawk', 'dragonlance', 'exandria', 'mystara', 'barovia', 'birthright',
   'gregorian',
 ];

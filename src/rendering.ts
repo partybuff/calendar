@@ -115,16 +115,19 @@ export function openMonthTable(mi, yearLabel, abbrHeaders?){
 
   var useAbbr = (abbrHeaders !== false);
   var wd = useAbbr ? weekdayHeaderLabels(true) : cal.weekdays;
+  // Weekless calendars (Barovia) carry no named weekdays; the grid still lays
+  // out on a 7-column week, so default the span and drop the label row.
+  var cols = wd.length || 7;
 
   var head = [
     '<table style="'+STYLES.table+'">',
-    '<tr><th colspan="'+wd.length+'" style="'+STYLES.head+'">',
+    '<tr><th colspan="'+cols+'" style="'+STYLES.head+'">',
     '<div style="'+STYLES.monthHeaderBase+monthHeaderStyle+'">',
       esc(mObj.name),
       '<span style="float:right;">'+esc(String(yearLabel!=null?yearLabel:cur.year))+' '+LABELS.era+'</span>',
     '</div>',
     '</th></tr>',
-    '<tr>'+ wd.map(function(d){ return '<th style="'+STYLES.th+'">'+esc(d)+'</th>'; }).join('') +'</tr>'
+    (wd.length ? '<tr>'+ wd.map(function(d){ return '<th style="'+STYLES.th+'">'+esc(d)+'</th>'; }).join('') +'</tr>' : '')
   ].join('');
 
   return { html: head, monthColor: monthColor };
@@ -546,6 +549,9 @@ export function formatDateLabel(y, mi, d, includeYear){
     } else {
       lbl = esc(mobj.name)+' '+d;
     }
+  } else if (fmt === 'nights'){
+    // "21st Night of the Twelfth Moon" (Barovia)
+    lbl = _ordinal(d) + ' Night of the ' + esc(mobj.name);
   } else {
     lbl = esc(mobj.name)+' '+d;
   }

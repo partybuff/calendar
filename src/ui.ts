@@ -20,7 +20,9 @@ import { dateFormatFor } from './worlds/index.js';
 export function currentDateLabel(){
   var cal = getCal(), cur = cal.current;
   var fmt = dateFormatFor(ensureSettings().calendarSystem);
-  if (fmt === 'ordinal_of_month'){
+  // Weekless / self-contained formats build the whole label themselves — no
+  // weekday prefix (Barovia's "21st Night of the Twelfth Moon, 735 BC").
+  if (fmt === 'ordinal_of_month' || fmt === 'nights'){
     return formatDateLabel(cur.year, cur.month, cur.day_of_the_month, true);
   }
   var datePart = _displayMonthDayParts(cur.month, cur.day_of_the_month).label;
@@ -40,7 +42,7 @@ export function dateLabelFromSerial(serial){
   var cal = getCal();
   var d = fromSerial(serial);
   var fmt = dateFormatFor(ensureSettings().calendarSystem);
-  if (fmt === 'ordinal_of_month'){
+  if (fmt === 'ordinal_of_month' || fmt === 'nights'){
     return formatDateLabel(d.year, d.mi, d.day, true);
   }
   var wd = cal.weekdays[weekdayIndex(d.year, d.mi, d.day)];
@@ -160,6 +162,10 @@ export function _displayMonthDayParts(mi, day){
   }
   if (fmt === 'month_day_year' && m.isIntercalary && String(m.name||'') === 'Leap Day'){
     return { monthName: 'February', day: 29, label: 'February 29' };
+  }
+  if (fmt === 'nights'){
+    var moonName = String(m.name || (mi + 1));
+    return { monthName: moonName, day: day, label: _ordinal(day) + ' Night of the ' + moonName };
   }
   return {
     monthName: String(m.name || (mi + 1)),
