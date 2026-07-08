@@ -8,7 +8,7 @@ import { _invalidateSerialCache, _isLeapMonth, fromSerial, toSerial, todaySerial
 import { DaySpec, Parse } from './parsing.js';
 import { _deliverAdditionalCalendarRange, _deliverTopLevelCalendarRange, buildAdditionalRangesCommand, buildCalendarsHtmlForSpec, defaultKeyFor, eventDisplayName, getEventColor, mergeInNewDefaultEvents, occurrencesInRange } from './events.js';
 import { button, clamp, esc, eventLineHtml, _monthRangeFromSerial } from './rendering.js';
-import { _displayMonthDayParts, _menuBox, _serialToDateSpec, _shiftSerialByMonth, additionalHubHtml, calendarSystemListHtml, currentDateLabel, dateLabelFromSerial, formalCurrentDateLabel, helpCalendarSystemMenu, helpEventColorsMenu, helpRootMenu, helpThemesMenu, nextForDayOnly, sendCurrentDate, setDate, stepDays, taskCardHtml, themeListHtml } from './ui.js';
+import { _displayMonthDayParts, _menuBox, _serialToDateSpec, _shiftSerialByMonth, additionalHubHtml, calendarSystemListHtml, currentDateLabel, dateLabelFromSerial, formalCurrentDateLabel, helpCalendarSystemMenu, helpEventColorsMenu, helpRootMenu, helpThemesMenu, manageHubHtml, nextForDayOnly, sendCurrentDate, setDate, settingsPanelHtml, stepDays, taskCardHtml, themeListHtml } from './ui.js';
 import { _normalizePackedWords, _playerTodayHtml, _showDefaultCalView, send, whisper, whisperUi } from './commands.js';
 import { _getMoonSys, _moonLastEvent, _moonNextEvent, _moonPeakPhaseDay, _moonPhaseEmoji, _moonPhaseLabel, handleMoonCommand, invalidateMoonModel, moonEnsureSequences, moonPhaseAt } from './moon.js';
 import { getPlanarState, _getAllPlaneData, _getPlaneData, handlePlanesCommand } from './planes.js';
@@ -837,6 +837,8 @@ export var commands = {
 
   // ── GM Only ───────────────────────────────────────────────────────────────
 
+  manage: { gm:true, run:function(m){ whisperUi(m.who, manageHubHtml()); } },
+
   settings: { gm:true, run:function(m,a){
     var key = String(a[2]||'').toLowerCase();
     var val = String(a[3]||'').toLowerCase();
@@ -849,8 +851,9 @@ export var commands = {
         '<code>!cal settings verbosity (normal|minimal)</code>'
       );
     }
+    // No key → the self-describing Settings panel (the button surface).
     if (!key){
-      return _settingsUsage();
+      return whisperUi(m.who, settingsPanelHtml());
     }
     if (key === 'density'){
       if (!/^(compact|normal)$/.test(val)){
@@ -858,7 +861,7 @@ export var commands = {
       }
       st.uiDensity = val;
       refreshAndSend();
-      return whisperUi(m.who,'UI density set to <b>'+esc(val)+'</b>.');
+      return whisperUi(m.who, settingsPanelHtml());
     }
     if (key === 'verbosity'){
       if (!/^(normal|minimal)$/.test(val)){
@@ -866,7 +869,7 @@ export var commands = {
       }
       st.subsystemVerbosity = val;
       refreshAndSend();
-      return whisperUi(m.who,'Subsystem detail set to <b>'+esc(titleCase(val))+'</b>.');
+      return whisperUi(m.who, settingsPanelHtml());
     }
     if (key === 'mode'){
       var sysTok = String(a[3] || '').toLowerCase();
@@ -876,7 +879,7 @@ export var commands = {
       }
       st.planesDisplayMode = modeTok;
       refreshAndSend();
-      return whisperUi(m.who,'Display mode updated: <b>'+esc(titleCase(sysTok))+'</b> → <b>'+esc(titleCase(modeTok))+'</b>.');
+      return whisperUi(m.who, settingsPanelHtml());
     }
     if (!/^(group|labels|events|moons|planes|offcycle|buttons)$/.test(key) || !/^(on|off)$/.test(val)){
       return _settingsUsage();
@@ -889,7 +892,7 @@ export var commands = {
     if (key==='offcycle') st.offCyclePlanes      = (val==='on');
     if (key==='buttons')  st.autoButtons         = (val==='on');
     refreshAndSend();
-    whisperUi(m.who,'Setting updated.');
+    whisperUi(m.who, settingsPanelHtml());
   }},
 
   // §5.5 — `!cal events current` / `!cal events all [yyyy]` / the

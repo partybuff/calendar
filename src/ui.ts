@@ -550,7 +550,7 @@ export function gmButtonsHtml(){
   // (Additional / Help). Single-day steps; multi-day stepping goes
   // through `!cal advance N` / `!cal retreat N` from chat.
   var rows = [];
-  rows.push('<div>' + mb('Retreat','retreat 1') + ' ' + mb('Advance','advance 1') + ' ' + mb('Send','send') + '</div>');
+  rows.push('<div>' + mb('Retreat','retreat 1') + ' ' + mb('Advance','advance 1') + ' ' + mb('Send','send') + ' ' + mb('Manage','manage') + '</div>');
   rows.push(_playerButtonsHtml());
   return rows.join('');
 }
@@ -600,6 +600,57 @@ export function additionalHubHtml(){
   }
   rows.push('<div style="margin-top:6px;">' + button('⬅️ Back','') + '</div>');
   return _menuBox('Additional', rows.join(''));
+}
+
+// GM Settings panel — self-describing flip grid. Dropdowns pick a value;
+// each toggle button shows its CURRENT state and emits the OPPOSITE, so one
+// click = one flip. `offcycle` is intentionally absent (off-cycle planar
+// generation is out of scope). Planes rows show only on Eberron.
+export function settingsPanelHtml(){
+  var st = ensureSettings();
+  var isEberron = String(st.calendarSystem || '') === 'eberron';
+  function toggle(key, label, isOn){
+    return button(label + ': ' + (isOn ? 'ON' : 'OFF'), 'settings ' + key + ' ' + (isOn ? 'off' : 'on'));
+  }
+  var choose = '<div style="margin:3px 0;">' +
+    button('Density: ' + titleCase(_uiDensityValue('')), 'settings density ?{Density|Compact,compact|Normal,normal}') + ' ' +
+    button('Detail: ' + titleCase(_subsystemVerbosityValue()), 'settings verbosity ?{Detail|Normal,normal|Minimal,minimal}') +
+    (isEberron ? ' ' + button('Planes View: ' + _displayModeLabel(st.planesDisplayMode), 'settings mode planes ?{Planes view|Calendar,calendar|List,list|Both,both}') : '') +
+    '</div>';
+  var toggles = '<div style="margin:3px 0;">' +
+    toggle('events', 'Events', st.eventsEnabled !== false) + ' ' +
+    toggle('moons', 'Moons', st.moonsEnabled !== false) + ' ' +
+    (isEberron ? toggle('planes', 'Planes', st.planesEnabled !== false) + ' ' : '') +
+    toggle('group', 'Group by source', !!st.groupEventsBySource) + ' ' +
+    toggle('labels', 'Source labels', !!st.showSourceLabels) + ' ' +
+    toggle('buttons', 'Auto buttons', st.autoButtons === true) +
+    '</div>';
+  var tail = '<div style="margin-top:6px;">' + button('⤺ Manage', 'manage') + ' ' + button('Dashboard', 'today') + '</div>';
+  return _menuBox('⚙️ Settings', choose + toggles + tail);
+}
+
+// GM Manage hub — the single home for configuration, relocated out of the
+// Help grab-bag. Grouped by concern; the Reset confirm puts the choice at the
+// VERB position so Cancel emits a harmless `!cal today` and only "Yes RESET"
+// fires `resetcalendar` (which ignores its args, so a value-position guard
+// wouldn't work).
+export function manageHubHtml(){
+  var todaySpec = _serialToDateSpec(todaySerial());
+  var head = '<div style="font-size:.8em;opacity:.7;margin:2px 0;">Configuration &amp; publishing — GM only.</div>';
+  function grp(label){ return '<div style="margin:6px 0 2px;font-size:.78em;letter-spacing:.04em;text-transform:uppercase;opacity:.6;">' + label + '</div>'; }
+  var rows = head +
+    grp('World &amp; date') +
+    '<div style="margin:2px 0;">' + button('Set Date', 'set ?{Set Date (mm dd yyyy)|' + todaySpec + '}') + ' ' + button('Calendar / Variant', 'calendar list') + '</div>' +
+    grp('Display') +
+    '<div style="margin:2px 0;">' + button('Settings', 'settings') + ' ' + button('Sources', 'source list') + '</div>' +
+    grp('Look &amp; region') +
+    '<div style="margin:2px 0;">' + button('Themes', 'theme list') + ' ' + button('Hemisphere', 'hemisphere ?{Hemisphere|North,north|South,south|Status,status}') + '</div>' +
+    grp('Publish') +
+    '<div style="margin:2px 0;">' + button('Broadcast Today', 'send') + ' ' + button('Broadcast Range', 'send ?{Range|This Month,month|This Year,year|Next Month,next month|Today,today}') + '</div>' +
+    grp('Danger') +
+    '<div style="margin:2px 0;">' + button('Reset Calendar', '?{Reset the calendar to defaults?|Cancel,today|Yes RESET,resetcalendar}') + '</div>' +
+    '<div style="margin-top:6px;">' + button('Dashboard', 'today') + '</div>';
+  return _menuBox('🛠️ Manage', rows);
 }
 
 export function helpStatusSummaryHtml(){
