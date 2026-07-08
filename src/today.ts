@@ -252,9 +252,10 @@ function _eventsPanelHtml(serialArg){
           var k = String(nm || '').toLowerCase();
           if (!seen[k]){ seen[k] = 1; evList.push(nm); }
         }
-        lines.push('<ul style="margin:4px 0;padding-left:18px;">');
+        lines.push('<ul style="margin:4px 0;padding-left:0;list-style:none;">');
         for (var j = 0; j < evList.length; j++){
-          lines.push('<li style="font-size:.85em;">' + esc(evList[j]) + '</li>');
+          // Each event is a button → its detail card (`!cal event <name>`).
+          lines.push('<li style="margin:2px 0;">' + button(evList[j], 'event ' + evList[j]) + '</li>');
         }
         lines.push('</ul>');
       }
@@ -267,8 +268,8 @@ function _eventsPanelHtml(serialArg){
 
   var btns = [];
   btns.push('<div style="margin:6px 0 3px 0;">');
-  btns.push(button('Show Previous','events panel ' + prevSer) + ' ');
-  btns.push(button('Show Next','events panel ' + nextSer));
+  btns.push(button('◂ Prev Events','events panel ' + prevSer) + ' ');
+  btns.push(button('Next Events ▸','events panel ' + nextSer));
   btns.push('</div>');
   btns.push('<div style="margin:3px 0;">' + button('Send to Players','send ' + mobj.name + ' ' + dd.year) + '</div>');
 
