@@ -838,12 +838,6 @@ export function handlePlanesCommand(m, args){
     });
   }
 
-  // !cal planes reveal <rangeSpec>  — Reveal Custom Range
-  if (sub === 'reveal'){
-    var revealArgs = args.slice(2);
-    return _deliverTopLevelCalendarRange({ who: m.who, args: revealArgs, dest: 'whisper' });
-  }
-
   whisper(m.who,
     'Planes: <code>!cal planes</code> &nbsp;·&nbsp; '+
     '<code>!cal planes summary</code> &nbsp;·&nbsp; '+

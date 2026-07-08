@@ -573,63 +573,6 @@ export function additionalHubHtml(){
   return _menuBox('Additional', rows.join(''));
 }
 
-export function activeEffectsPanelHtml(){
-  var st = ensureSettings();
-  var today = todaySerial();
-  var sections = [];
-
-  // Planar mechanics (active coterminous/remote, filtered for non-routine signal)
-  if (st.planesEnabled !== false){
-    var pl = '';
-    try {
-      var planes = _getAllPlaneData();
-      var ypd = _planarYearDays();
-      var rows = [];
-      for (var i = 0; i < planes.length; i++){
-        var ps = getPlanarState(planes[i].name, today);
-        if (!ps) continue;
-        if (ps.phase !== 'coterminous' && ps.phase !== 'remote') continue;
-
-        // Skip permanently fixed routine states (e.g., Dal Quor/Xoriat) unless generated.
-        var isGenerated = _isGeneratedNote(ps.note);
-        if (planes[i].type === 'fixed' && !isGenerated) continue;
-
-        // Skip extremely long routine phases unless forced or generated.
-        if (ps.phaseDuration != null && ps.phaseDuration > ypd && !ps.overridden && !isGenerated) continue;
-
-        var emoji = PLANE_PHASE_EMOJI[ps.phase] || '⚪';
-        var lbl = PLANE_PHASE_LABELS[ps.phase] || ps.phase;
-        var next = (ps.daysUntilNextPhase != null && ps.nextPhase)
-          ? ' <span style="opacity:.55;font-size:.82em;">(' + esc(PLANE_PHASE_LABELS[ps.nextPhase] || ps.nextPhase) + ' in ' + ps.daysUntilNextPhase + 'd)</span>'
-          : '';
-        var row = '<div style="margin:3px 0;">'+emoji+' <b>'+esc(ps.plane.name)+'</b> — '+esc(lbl)+next+'</div>';
-        var eff = (ps.plane.effects && ps.plane.effects[ps.phase]) || '';
-        if (eff){
-          row += '<div style="font-size:.82em;opacity:.78;margin-left:14px;">'+esc(eff)+'</div>';
-        }
-        rows.push(row);
-      }
-
-      if (!rows.length){
-        pl = '<div style="opacity:.7;">No notable coterminous/remote planar effects are active today.</div>';
-      } else {
-        pl = rows.join('');
-      }
-    } catch(e6){
-      pl = '<div style="opacity:.7;">Planar data unavailable.</div>';
-    }
-    sections.push(_menuBox('🌀 Active Planar Effects', pl));
-  }
-
-  if (!sections.length){
-    sections.push('<div style="opacity:.7;">No active effect systems are enabled.</div>');
-  }
-
-  return _menuBox('✨ Active Effects — ' + esc(currentDateLabel()),
-    sections.join('')
-  );
-}
-
 export function helpStatusSummaryHtml(){
   var st      = ensureSettings();
   var curDate = esc(currentDateLabel());
@@ -664,9 +607,6 @@ export function helpRootMenu(m){
   var rowsNew = [helpStatusSummaryHtml()];
   var todaySpec = _serialToDateSpec(todaySerial());
   var promptSet = button('Set Date', 'set ?{Set Date (mm dd yyyy)|' + todaySpec + '}');
-  var promptAdd = button('Prompt !cal add', 'add ?{Date of Single Event — Format as DD, MM DD, or MM DD YYYY|' + todaySpec + '} ?{Event name|New Event} ?{Color|#50C878}');
-  var promptMonthly = button('Prompt !cal addmonthly', 'addmonthly ?{Date of Monthly Event — Format as DD|first Sul} ?{Event name|Monthly Event} ?{Color|#50C878}');
-  var promptYearly = button('Prompt !cal addyearly', 'addyearly ?{Date of Yearly Event — Format as MM DD|Zarantyr 1} ?{Event name|Annual Event} ?{Color|#50C878}');
   var promptMoonOn = button('Prompt !cal moon on', 'moon on ?{Date|' + todaySpec + '}');
   var promptPlanesOn = button('Prompt !cal planes on', 'planes on ?{Date|' + todaySpec + '}');
 
@@ -685,16 +625,12 @@ export function helpRootMenu(m){
   if (isGMNew){
     rowsNew.push(taskCardHtml(
       'Events',
-      'Add one-off, monthly, and yearly events with prompts or typed commands, then manage source packs separately.',
+      'Review the canon event source packs and the color key.',
       [
-        mbP(m,'List','list'),
         mbP(m,'Sources','source list'),
-        navP(m,'Colors','eventcolors'),
-        promptAdd,
-        promptMonthly,
-        promptYearly
+        navP(m,'Colors','eventcolors')
       ],
-      'Typed forms: <code>!cal add</code>, <code>!cal addmonthly</code>, <code>!cal addyearly</code>.'
+      'Typed forms: <code>!cal events</code>, <code>!cal source list</code>.'
     ));
   }
 
@@ -716,7 +652,6 @@ export function helpRootMenu(m){
       'Review planar movement, active extremes, and known future windows from a compact starting point.',
       [
         mbP(m,'Planes','planes'),
-        isGMNew ? mbP(m,'Effects','effects') : '',
         promptPlanesOn
       ],
       'Typed forms: <code>!cal planes</code>, <code>!cal planes on &lt;dateSpec&gt;</code>.'
@@ -730,10 +665,8 @@ export function helpRootMenu(m){
       'GM Admin',
       'Reach the high-churn admin tools here and keep deeper configuration inside the existing drill-down menus.',
       [
-        mbP(m,'Time','time'),
         navP(m,'Name Variants','calendar'),
-        navP(m,'Themes','themes'),
-        mbP(m,'Effects','effects')
+        navP(m,'Themes','themes')
       ],
       'Views: Planes ' + _displayModeLabel(plModeNew) +
       ' · Detail ' + (verbNew === 'minimal' ? 'minimal' : 'normal') +

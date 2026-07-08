@@ -36,12 +36,13 @@ describe("Redesigned panel routing", () => {
     const msg = String(lastChat().msg);
     assert(msg.includes("Events"));
     assert(msg.includes("Send to Players"));
-    assert(msg.includes("Add Single Event"));
-    assert(msg.includes("Manage Event Sources"));
-    assert(msg.includes("Hide/Show Event"));
-    assert(msg.includes("events source"));
-    assert(msg.includes("events list"));
-    assert(!msg.includes("events removeflow"));
+    assert(msg.includes("Additional Ranges"));
+    // Retired custom-event management (add/monthly/yearly, source/list) is gone.
+    assert(!msg.includes("Add Single Event"));
+    assert(!msg.includes("Manage Event Sources"));
+    assert(!msg.includes("Hide/Show Event"));
+    assert(!msg.includes("events source"));
+    assert(!msg.includes("events list"));
   });
 
   it("keeps the Events send button aligned to the displayed month", () => {
