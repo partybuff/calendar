@@ -25,18 +25,25 @@ export function monthIndexByName(tok){
   return best;
 }
 
-// Map a 1-based REAL-month ordinal to its index in the flattened
-// `cal.months` list, which interleaves intercalary festivals. A numeric
-// month addresses real months ONLY — festivals are reached by name — so
-// `!cal set 5 14` means the 5th real month regardless of how many festival
-// slots sit before it (in Harptos the festivals shift a raw index; this
-// skips them). Clamps to the real-month count. Falls back to a flat clamp
-// only if a world somehow has no real months.
-export function flatIndexForRealMonth(n){
+// Flattened `cal.months` indexes of the real (non-intercalary) months, in
+// order. The month list interleaves intercalary festivals, so this is how a
+// "real-month ordinal" maps back to a slot.
+export function realMonthIndexes(){
   var cal = getCal();
-  var real = [];
-  for (var i=0;i<cal.months.length;i++){ if (!cal.months[i].isIntercalary){ real.push(i); } }
-  if (!real.length) return clamp((n|0), 1, cal.months.length) - 1;
+  var out = [];
+  for (var i=0;i<cal.months.length;i++){ if (!cal.months[i].isIntercalary){ out.push(i); } }
+  return out;
+}
+
+// Map a 1-based REAL-month ordinal to its flattened `cal.months` index. A
+// numeric month addresses real months ONLY — festivals are reached by name —
+// so `!cal set 5 14` means the 5th real month regardless of how many festival
+// slots sit before it (in Harptos the festivals shift a raw index; this skips
+// them). Clamps to the real-month count. Falls back to a flat clamp only if a
+// world somehow has no real months.
+export function flatIndexForRealMonth(n){
+  var real = realMonthIndexes();
+  if (!real.length) return clamp((n|0), 1, getCal().months.length) - 1;
   return real[clamp((n|0), 1, real.length) - 1];
 }
 
@@ -178,7 +185,11 @@ export var Parse = (function(){
       if (maybeMi !== -1){ mi = maybeMi; idx++; }
       else if (/^\d+$/.test(tokens[idx])){
         var n = parseInt(tokens[idx],10);
-        if (n>=1 && n<=cal.months.length){ mi = n-1; idx++; }
+        // Numeric month = real-month ordinal (festivals are name-only),
+        // matching looseMDY. The range guard keeps a bare year from being
+        // misread as a month.
+        var realIdxs = realMonthIndexes();
+        if (n>=1 && n<=realIdxs.length){ mi = realIdxs[n-1]; idx++; }
       }
     }
 

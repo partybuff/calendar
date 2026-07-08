@@ -67,6 +67,23 @@ describe("Date-spec parsing — real-month numerals vs. named festivals", () => 
     assertEquals(r.day, 3);
   });
 
+  it("monthYearLoose (recurring/event specs) uses the same real-month numbering", () => {
+    freshInstall();
+    applyCalendarSystem("faerunian", "standard");
+    const cal = getCal();
+    const real = realMonthFlatIndexes();
+
+    const r = Parse.monthYearLoose(["5", "14"]);
+    assertEquals(r.mi, real[4], "numeric month 5 must land on the 5th REAL month");
+    assertEquals(r.day, 14);
+    assert(!cal.months[r.mi].isIntercalary);
+
+    // A number past the real-month count is not treated as a month (so a
+    // bare year isn't misread) — mi stays -1.
+    const yearish = Parse.monthYearLoose([String(real.length + 3)]);
+    assertEquals(yearish.mi, -1);
+  });
+
   it("Eberron (no intercalaries) keeps 1:1 numeric months", () => {
     freshInstall();
     applyCalendarSystem("eberron", "standard");
