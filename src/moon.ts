@@ -915,8 +915,8 @@ export function moonPanelParts(serialOverride?){
   var prevSer = _shiftSerialByMonth(today, -1);
   var nextSer = _shiftSerialByMonth(today, 1);
   var navRow = '<div style="margin:3px 0 6px 0;">'+
-    button('Show Previous','moon on '+_serialToDateSpec(prevSer))+' '+
-    button('Show Next','moon on '+_serialToDateSpec(nextSer))+
+    button('◂ Prev Moon','moon on '+_serialToDateSpec(prevSer))+' '+
+    button('Next Moon ▸','moon on '+_serialToDateSpec(nextSer))+
     '</div>';
 
   var parts = [];
@@ -999,8 +999,8 @@ export function moonPlayerPanelHtml(serialOverride?){
   var prevSer = _shiftSerialByMonth(today, -1);
   var nextSer = _shiftSerialByMonth(today, 1);
   var navRow = '<div style="margin:3px 0 6px 0;">'+
-    button('Show Previous','moon on '+_serialToDateSpec(prevSer))+' '+
-    button('Show Next','moon on '+_serialToDateSpec(nextSer))+
+    button('◂ Prev Moon','moon on '+_serialToDateSpec(prevSer))+' '+
+    button('Next Moon ▸','moon on '+_serialToDateSpec(nextSer))+
     '</div>';
 
   var rows = sys.moons.map(function(moon){

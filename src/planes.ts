@@ -548,8 +548,8 @@ export function planesPanelHtml(isGM, serialOverride?){
   var prevSer = _shiftSerialByMonth(today, -1);
   var nextSer = _shiftSerialByMonth(today, 1);
   var navRow = '<div style="margin:3px 0 6px 0;">'+
-    button('Show Previous','planes on '+_serialToDateSpec(prevSer))+' '+
-    button('Show Next','planes on '+_serialToDateSpec(nextSer))+
+    button('◂ Prev Planar','planes on '+_serialToDateSpec(prevSer))+' '+
+    button('Next Planar ▸','planes on '+_serialToDateSpec(nextSer))+
     '</div>';
 
   for (var i = 0; i < planes.length; i++){
