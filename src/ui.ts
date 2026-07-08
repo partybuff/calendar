@@ -208,6 +208,18 @@ export function showNavTailHtml(){
     '</div>';
 }
 
+// Dashboard "views" row — one click into each subsystem's current view.
+// World-gated exactly like the Additional hub: Moons only when enabled,
+// Planes only on Eberron. Both roles see it (read-only views).
+export function dashboardViewsHtml(){
+  var st = ensureSettings();
+  var isEberron = String(st.calendarSystem || '').toLowerCase() === 'eberron';
+  var parts = [ button('Events', 'events current') ];
+  if (st.moonsEnabled !== false) parts.push(button('Moons', 'moon summary'));
+  if (st.planesEnabled !== false && isEberron) parts.push(button('Planes', 'planar current'));
+  return '<div style="margin:2px 0;">' + parts.join(' ') + '</div>';
+}
+
 export function _playerButtonsHtml(){
   // §5.2 public row. Same buttons whether caller is player or GM; the GM
   // row in `gmButtonsHtml` adds Retreat / Advance / Send above this.
@@ -377,9 +389,11 @@ export function sendCurrentDate(to, gmOnly, opts?){
     var isGmRecipient = !!gmOnly || !!(opts.playerid && playerIsGM(opts.playerid));
     var controlsHtml = isGmRecipient ? gmButtonsHtml() : _playerButtonsHtml();
     // Month stepper leads the control stack on the full today view (not the
-    // compact `now` line). It walks from the current month.
+    // compact `now` line). It walks from the current month. The views row
+    // (one-click into each subsystem) follows it, on the dashboard only.
     var stepperHtml = compact ? '' : monthStepperHtml(todaySer);
-    if (controlsHtml || stepperHtml) controls = '<div style="margin-top:2px;">' + stepperHtml + controlsHtml + '</div>';
+    var viewsHtml = (dashboard && !compact) ? dashboardViewsHtml() : '';
+    if (controlsHtml || stepperHtml || viewsHtml) controls = '<div style="margin-top:2px;">' + stepperHtml + viewsHtml + controlsHtml + '</div>';
   }
   var publicMsg = msgCore + controls;
 
