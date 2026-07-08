@@ -602,8 +602,16 @@ function _planarCurrentHtml(){
   function dateSerial(d: any){
     return toSerial(d.year, _calendarDateMonthIndexFor(d), d.day || 1);
   }
+  // A phase-OUT transition (to neutral) is dated by the engine on the first
+  // NEUTRAL day — i.e. the day AFTER the phase's last active day. Since the
+  // wrapper labels it "<phase> Ends", show it on the last ACTIVE day so a
+  // Vult 26–28 coterminous "Ends" on Vult 28, not Zarantyr 1. Phase-in lines
+  // are unchanged. Used for both display and past/today/upcoming bucketing.
+  function transitionSerial(t: any){
+    return dateSerial(t.on) - (t.to === 'neutral' ? 1 : 0);
+  }
   function lineHtml(t: any, isToday: boolean){
-    var ser = dateSerial(t.on);
+    var ser = transitionSerial(t);
     var di = fromSerial(ser);
     var monthName = cal.months[di.mi] ? cal.months[di.mi].name : '';
     var planeName = t.plane && (t.plane.name || t.plane.key) || '';
@@ -632,7 +640,7 @@ function _planarCurrentHtml(){
   var past: string[] = [], onToday: string[] = [], upcoming: string[] = [];
   for (var i = 0; i < transitions.length; i++){
     var t = transitions[i];
-    var ser = dateSerial(t.on);
+    var ser = transitionSerial(t);
     var html = lineHtml(t, ser === today);
     if (ser < today) past.push(html);
     else if (ser === today) onToday.push(html);
@@ -681,11 +689,15 @@ function _planarAllHtml(year){
     transitions = (enginePlanes.upcoming(fromDate, span, getPlanePositions()) as any) || [];
   } catch(_e){}
 
-  // Group transitions by structural-mi.
+  // Group transitions by structural-mi. Phase-OUT transitions are dated by
+  // the engine on the first neutral day (last active day + 1); shift them
+  // back a day so a "<phase> Ends" line lands on the last ACTIVE day — and
+  // in the correct month/section (Vult 28, not Zarantyr 1).
   var byMonth: { [mi: string]: any[] } = {};
   for (var i = 0; i < transitions.length; i++){
     var t = transitions[i];
-    var ser = toSerial(t.on.year, _calendarDateMonthIndexFor(t.on), t.on.day || 1);
+    var rawSer = toSerial(t.on.year, _calendarDateMonthIndexFor(t.on), t.on.day || 1);
+    var ser = rawSer - (t.to === 'neutral' ? 1 : 0);
     var di = fromSerial(ser);
     var key = String(di.mi);
     if (!byMonth[key]) byMonth[key] = [];
