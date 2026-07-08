@@ -182,6 +182,32 @@ export function _shiftSerialByMonth(serial, dir){
   return toSerial(step.y, step.mi, day);
 }
 
+// Month stepper — the primary time-walk control. Each step emits an ABSOLUTE
+// month-anchored date spec computed from the *viewed* month, so repeated clicks
+// walk (Therendor → Nymm → Barrakas …) from anywhere with no stored cursor.
+// Rendered on the dashboard and under every `show` output. `This Month` is the
+// home key (campaign month); `Year` intentionally snaps to the campaign year
+// (`show year`), never the walked-to year — the 12-mini-cal year view is noisy.
+export function monthStepperHtml(viewSerial){
+  var prevSpec = _serialToDateSpec(_shiftSerialByMonth(viewSerial|0, -1));
+  var nextSpec = _serialToDateSpec(_shiftSerialByMonth(viewSerial|0, 1));
+  return '<div style="margin:4px 0 2px 0;">' +
+    button('‹ Prev', 'show ' + prevSpec) + ' ' +
+    button('This Month', 'show month') + ' ' +
+    button('Next ›', 'show ' + nextSpec) + ' ' +
+    button('Year', 'show year') +
+    '</div>';
+}
+
+// Nav tail under a `show`/range output: back to the dashboard + the Additional
+// hub. Kept separate from the stepper so callers can place them independently.
+export function showNavTailHtml(){
+  return '<div style="margin:2px 0;">' +
+    button('Dashboard', 'today') + ' ' +
+    button('Additional', 'additional') +
+    '</div>';
+}
+
 export function _playerButtonsHtml(){
   // §5.2 public row. Same buttons whether caller is player or GM; the GM
   // row in `gmButtonsHtml` adds Retreat / Advance / Send above this.
@@ -350,7 +376,10 @@ export function sendCurrentDate(to, gmOnly, opts?){
   if (includeButtons && (gmOnly || to)){
     var isGmRecipient = !!gmOnly || !!(opts.playerid && playerIsGM(opts.playerid));
     var controlsHtml = isGmRecipient ? gmButtonsHtml() : _playerButtonsHtml();
-    if (controlsHtml) controls = '<div style="margin-top:2px;">' + controlsHtml + '</div>';
+    // Month stepper leads the control stack on the full today view (not the
+    // compact `now` line). It walks from the current month.
+    var stepperHtml = compact ? '' : monthStepperHtml(todaySer);
+    if (controlsHtml || stepperHtml) controls = '<div style="margin-top:2px;">' + stepperHtml + controlsHtml + '</div>';
   }
   var publicMsg = msgCore + controls;
 
