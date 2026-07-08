@@ -347,7 +347,15 @@ Rhaan 14 998
 9 14 998
 1st
 fourteenth
+Midwinter
+Growfest 3
 ```
+
+A numeric month is the **real-month** ordinal (`1`–`12`), counting only the
+named months — intercalary festivals are skipped, so `9 14` is the 9th real
+month regardless of how many festivals precede it. **Intercalary festivals
+are set by name** (`Midwinter`, `Shieldmeet`, `Growfest 3`); a bare festival
+name lands on its first day.
 
 #### Recurring event day specs
 
