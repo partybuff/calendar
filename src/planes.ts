@@ -6,12 +6,15 @@
 // generation, no anchor wizardry, no knowledge tiers. Players and GMs see
 // the same canon-derived state.
 //
-// Phase math is engine-owned as of the PR 2c swap. `getPlanarState`
-// delegates to `@partybuff/calendar-engine/planes.stateOf`, threading
-// `state.imported.planarAnchors` through as `PlanePositions`. The
-// wrapper still owns the `PLANE_DATA` table for display enrichment
-// (note text, season hints, effect summaries, color overlays) — engine
-// `Plane` is leaner.
+// Phase math AND lore are engine-owned. `getPlanarState` delegates to
+// `@partybuff/calendar-engine/planes.stateOf`, threading
+// `state.imported.planarAnchors` through as `PlanePositions`, and sources
+// the plane's `effects` and canonical `note` from the engine's returned
+// `Plane` (canonicalNote requires engine ≥0.39.0; undefined-safe on older).
+// So editing plane lore/mechanics in the engine auto-bumps to Roll20. The
+// wrapper's `PLANE_DATA` table now carries ONLY presentation + orbit
+// metadata (name, title, color, orbit params, associatedMoon, seasonHint) —
+// NO lore text.
 import { enginePlanes, getPlanePositions, serialToCalendarDate } from './engine-opts.js';
 import { state_name } from './constants.js';
 import { ensureSettings, getCal, titleCase } from './state.js';
@@ -46,33 +49,18 @@ export var PLANE_DATA = {
       orbitYears: 400,   coterminousDays: null, remoteDays: null,
       coterminousYears: 100, remoteYears: 100,
       anchorYear: 800, anchorPhase: 'coterminous',
-      associatedMoon: 'Nymm',
-      note: 'Traditional cycle: coterminous for a century, then remote for a century one hundred years later.',
-      effects: {
-        coterminous: 'No obvious effects. Some sages link rise of civilizations to Daanvi coterminous periods. May impact eldritch machine rituals.',
-        remote: 'No obvious effects. Century-long remote period.'
-      }
-    },
+      associatedMoon: 'Nymm'},
     { name:'Dal Quor',  title:'The Region of Dreams',
       color: '#7B68AE',
       type:'fixed', fixedPhase:'remote',
-      associatedMoon: 'Crya',
-      note: 'Knocked off orbit ~40,000 years ago during the Quori invasion of Xen\'drik. Permanently remote. Crya (the 13th moon) believed destroyed.',
-      effects: { remote: 'Only reachable via dreaming. Plane shift cannot reach Dal Quor. No manifest zones exist naturally.' }
-    },
+      associatedMoon: 'Crya'},
     { name:'Dolurrh',   title:'The Realm of the Dead',
       color: '#808080',
       type:'cyclic',
       orbitYears: 100,   coterminousDays: null, remoteDays: null,
       coterminousYears: 1, remoteYears: 1,
       anchorYear: 950, anchorPhase: 'coterminous',
-      associatedMoon: 'Aryth',
-      note: 'Slow canonical cycle: coterminous for 1 year once per century; 50 years later, remote for 1 year.',
-      effects: {
-        coterminous: 'Ghosts more easily slip into the Material Plane, especially near Dolurrhi manifest zones. Raise-dead effects can draw unwanted spirits (Dolurrhi mishaps).',
-        remote: 'Traditional resurrection magic cannot pull spirits back from Dolurrh. Recovering the dead requires retrieving the shade in Dolurrh; deaths with intense emotion or unfinished business more often leave ghosts behind.'
-      }
-    },
+      associatedMoon: 'Aryth'},
     { name:'Fernia',    title:'The Sea of Fire',
       color: '#FF5722',
       type:'cyclic',
@@ -80,13 +68,7 @@ export var PLANE_DATA = {
       coterminousYears: null, remoteYears: null,
       anchorYear: 998, anchorPhase: 'coterminous', anchorMonth: 7,
       seasonHint: 'midsummer',
-      associatedMoon: 'Eyre',
-      note: 'Traditional cycle: coterminous during Lharvion once every five years; remote during Zarantyr once every five years, exactly 2.5 years later.',
-      effects: {
-        coterminous: 'Temperatures rise sharply. Safer warm regions can become extremely hot, taking on Deadly Heat, Empowered Fire, and Burning Bright traits. Rarely, creatures caught in exceptionally intense flame are pulled into Fernia.',
-        remote: 'Intense heat loses some of its bite. Creatures have advantage on saves against extreme heat and on saves against spells that deal fire damage.'
-      }
-    },
+      associatedMoon: 'Eyre'},
     { name:'Irian',     title:'The Eternal Dawn',
       color: '#F0F0F0',
       type:'cyclic',
@@ -94,23 +76,11 @@ export var PLANE_DATA = {
       coterminousYears: null, remoteYears: null,
       anchorYear: 998, anchorPhase: 'coterminous', anchorMonth: 4, anchorDay: 1,
       seasonHint: 'spring',
-      associatedMoon: 'Barrakas',
-      note: 'Coterminous for 10 days in Eyre and remote for 10 days in Sypheros, once every 3 years. The remote cycle comes 1.5 years after coterminous.',
-      effects: {
-        coterminous: 'Life blossoms. Health and fertility are enhanced, positive energy flows freely, and Radiant Power applies across Eberron. All creatures have advantage on saves against disease, poison, and fear.',
-        remote: 'Colors seem to fade and psychic numbness pervades the world. All creatures have disadvantage on saves against fear and resistance to radiant damage. Hit point restoration is halved, except long rests still restore full hit points.'
-      }
-    },
+      associatedMoon: 'Barrakas'},
     { name:'Kythri',    title:'The Churning Chaos',
       color: '#2E8B8B',
       type:'fixed', fixedPhase:'neutral',
-      associatedMoon: 'Zarantyr',
-      note: 'Kythri\'s coterminous and remote phases are completely unpredictable, lasting from days to centuries. Proximity has no discernible global effects on the Material Plane.',
-      effects: {
-        coterminous: 'No discernible global effects on the Material Plane.',
-        remote: 'No discernible global effects on the Material Plane.'
-      }
-    },
+      associatedMoon: 'Zarantyr'},
     { name:'Lamannia',  title:'The Twilight Forest',
       color: '#228B22',
       type:'cyclic',
@@ -118,13 +88,7 @@ export var PLANE_DATA = {
       coterminousYears: null, remoteYears: null,
       anchorYear: 998, anchorPhase: 'coterminous', anchorMonth: 6, anchorDay: 24,
       seasonHint: 'summer solstice',
-      associatedMoon: 'Olarune',
-      note: 'Coterminous for a week centered on the summer solstice (Nymm 24–Lharvion 2) and remote for a week centered on the winter solstice (Vult 24–Zarantyr 2). Both occur every year.',
-      effects: {
-        coterminous: 'Lamannian manifest zone effects are enhanced. In unspoiled nature, fertility of plants and animals rises and beasts conceived in this period are often exceptionally strong and healthy. Spells targeting beasts or elementals with duration 1 minute or longer are doubled; durations of 24 hours or longer are unaffected.',
-        remote: 'Fertility rates drop and beasts born in this period are often weak or sickly; animals are uneasy. Spells affecting beasts or elementals have their duration halved, to a minimum of 1 round.'
-      }
-    },
+      associatedMoon: 'Olarune'},
     { name:'Mabar',     title:'The Endless Night',
       color: '#111111',
       type:'cyclic',
@@ -133,13 +97,7 @@ export var PLANE_DATA = {
       anchorYear: 998, anchorPhase: 'coterminous', anchorMonth: 12, anchorDay: 26,
       seasonHint: 'winter solstice',
       associatedMoon: 'Sypheros',
-      remoteOrbitYears: 5, remoteDaysSpecial: 5, remoteSeasonHint: 'summer solstice',
-      note: 'Long Shadows: coterminous for 3 days around the winter solstice (Vult 26–28), every year. Remote for 5 days around the summer solstice (Nymm 25–Lharvion 1), once every 5 years.',
-      effects: {
-        coterminous: 'Necrotic Power encompasses the world and all light source radii are halved. In regions steeped in despair or misery, deep darkness can open gateways to Mabar, releasing shadows and other horrors. This manifests only at night and ends at dawn.',
-        remote: 'All creatures gain resistance to necrotic damage. Undead have disadvantage on saves vs being turned or frightened.'
-      }
-    },
+      remoteOrbitYears: 5, remoteDaysSpecial: 5, remoteSeasonHint: 'summer solstice'},
     { name:'Risia',     title:'The Plain of Ice',
       color: '#00ACC1',
       type:'cyclic',
@@ -148,59 +106,32 @@ export var PLANE_DATA = {
       anchorYear: 996, anchorPhase: 'coterminous', anchorMonth: 1,
       linkedTo: 'Fernia',
       seasonHint: 'midwinter',
-      associatedMoon: 'Dravago',
-      note: 'Exactly opposite Fernia on the same 5-year cycle. Coterminous in midwinter (Zarantyr), remote in midsummer (Lharvion). Risia is coterminous when Fernia is remote and vice versa.',
-      effects: {
-        coterminous: 'Temperatures drop sharply. Areas that are normally merely chilly can take on Lethal Cold, Empowered Ice, and Stillness of Flesh properties. Rarely, creatures caught in exceptionally intense cold can be transported to Risia.',
-        remote: 'Intense cold loses some of its bite. Creatures have advantage on saves against extreme cold and on saves against spells that deal cold damage.'
-      }
-    },
+      associatedMoon: 'Dravago'},
     { name:'Shavarath', title:'The Eternal Battleground',
       color: '#8B0000',
       type:'cyclic',
       orbitYears: 36,    coterminousDays: null, remoteDays: null,
       coterminousYears: 1, remoteYears: 1,
       anchorYear: 990, anchorPhase: 'coterminous',
-      associatedMoon: 'Vult',
-      note: 'Traditional cycle: coterminous for 1 year every 36 years and remote for 1 year every 36 years.',
-      effects: {
-        coterminous: 'People are quick to anger: trivial disputes can become brawls, and restless thought can lead to riots or revolution. War Magic and Unquenchable Fury spread worldwide; intense violence in Shavaran manifest zones can draw in whirling blades.',
-        remote: 'No apparent effect on the Material Plane.'
-      }
-    },
+      associatedMoon: 'Vult'},
     { name:'Syrania',   title:'The Azure Sky',
       color: '#64B5F6',
       type:'cyclic',
       orbitYears: 10,    coterminousDays: 1, remoteDays: 1,
       coterminousYears: null, remoteYears: null,
       anchorYear: 998, anchorPhase: 'coterminous', anchorMonth: 9, anchorDay: 9,
-      associatedMoon: 'Therendor',
-      note: 'Traditionally coterminous on 9 Rhaan once every 10 years and remote on the same day 5 years later. This is celebrated as Boldrei\'s Feast, with especially grand celebrations on coterminous years.',
-      effects: {
-        coterminous: 'Goodwill spreads worldwide. Absolute Peace and Gentle Thoughts apply across Eberron; creatures harmed (or witnessing allies harmed) ignore Absolute Peace for 1 minute. Skies are clear and weather calm.',
-        remote: 'Skies are gray and the sun is hidden. People feel quarrelsome: creatures have disadvantage on Charisma (Persuasion) checks and advantage on Charisma (Intimidation) checks. Outside Syranian manifest zones, flying speeds are reduced by 10 feet (minimum 5 feet).'
-      }
-    },
+      associatedMoon: 'Therendor'},
     { name:'Thelanis',  title:'The Faerie Court',
       color: '#50C878',
       type:'cyclic',
       orbitYears: 225,   coterminousDays: null, remoteDays: null,
       coterminousYears: 7, remoteYears: 7,
       anchorYear: 800, anchorPhase: 'coterminous',
-      associatedMoon: 'Rhaan',
-      note: 'Traditional cycle: coterminous for 7 years every 225 years, remote for 7 years halfway between. Evidence suggests this cycle has been disrupted (possibly by the Mourning), and no one knows when Thelanis will next become coterminous or how long it will last.',
-      effects: {
-        coterminous: 'New gateway zones spring up, and mischievous or cruel fey may cross over. It is easier for careless travelers to cross into Thelanis, but usually only after breaking a superstition or taboo; warnings are often present.',
-        remote: 'Effects of Thelanian manifest zones are suppressed. Fey creatures, even ones that usually dwell on Eberron, may be temporarily drawn back to Thelanis. The world feels less magical.'
-      }
-    },
+      associatedMoon: 'Rhaan'},
     { name:'Xoriat',    title:'The Realm of Madness',
       color: '#9ACD32',
       type:'fixed', fixedPhase:'remote',
-      associatedMoon: 'Lharvion',
-      note: 'The Gatekeeper seals that bind the daelkyr in Khyber also keep Xoriat from becoming coterminous. Remote phases are unpredictable and usually much slower than Kythri\'s. No citizens of the Five Nations are known to have visited Xoriat.',
-      effects: { remote: 'Xoriat\'s remote phases have no known global effect on the Material Plane.' }
-    }
+      associatedMoon: 'Lharvion'}
   ]
 };
 
@@ -264,14 +195,22 @@ export function _planarYearDays(){
 export function getPlanarState(planeName, serial, _opts?){
   var plane = _getPlaneData(planeName);
   if (!plane) return null;
-  var key = String(plane.key || (plane.name || '').toLowerCase());
+  // Engine plane keys are snake_case (e.g. "Dal Quor" → "dal_quor"), so map
+  // spaces to underscores. Without this, multi-word planes throw "unknown
+  // plane" in stateOf and silently fall back (no engine phase or lore).
+  var key = String(plane.key || (plane.name || '').toLowerCase().replace(/\s+/g, '_'));
 
   try {
     var date = serialToCalendarDate(serial);
     var ps = enginePlanes.stateOf(key, date, getPlanePositions());
     var phaseDur = ps.phaseDuration;
+    // Plane LORE (effects + note) is engine-sourced so edits in the engine
+    // auto-bump to Roll20; the wrapper's PLANE_DATA contributes only
+    // presentation/orbit metadata (name, color, orbitYears, associatedMoon).
+    // `canonicalNote` is present on engine ≥0.39.0 — undefined-safe on older.
+    var enginePlane: any = ps.plane || {};
     return {
-      plane: plane,
+      plane: Object.assign({}, plane, { effects: enginePlane.effects || null }),
       phase: ps.phase,
       phaseIndex: null,
       daysIntoPhase: phaseDur != null ? ps.daysIntoPhase : null,
@@ -279,7 +218,7 @@ export function getPlanarState(planeName, serial, _opts?){
       phaseDuration: phaseDur != null ? phaseDur : null,
       nextPhase: phaseDur != null ? ps.nextPhase : null,
       overridden: false,
-      note: plane.note || '',
+      note: enginePlane.canonicalNote || '',
       sourceLabel: 'traditional'
     };
   } catch (_e){
@@ -295,7 +234,7 @@ export function getPlanarState(planeName, serial, _opts?){
       phaseDuration: null,
       nextPhase: null,
       overridden: false,
-      note: plane.note || '',
+      note: '',
       sourceLabel: 'traditional'
     };
   }
@@ -843,9 +782,9 @@ export function handlePlanesCommand(m, args){
       viewHtml += '<div style="margin:2px 0;font-size:.88em;opacity:.7;">Next: '+
         esc(PLANE_PHASE_LABELS[viewPs.nextPhase] || viewPs.nextPhase)+' in '+viewPs.daysUntilNextPhase+'d</div>';
     }
-    if (viewPlane.effects && viewPlane.effects[viewPs.phase]){
+    if (viewPs.plane.effects && viewPs.plane.effects[viewPs.phase]){
       viewHtml += '<div style="margin:4px 0;font-size:.85em;padding:3px 6px;background:rgba(255,255,255,.06);border-radius:3px;">'+
-        '<b>Effects:</b> '+esc(viewPlane.effects[viewPs.phase])+'</div>';
+        '<b>Effects:</b> '+esc(viewPs.plane.effects[viewPs.phase])+'</div>';
     }
     if (viewPlane.title){
       viewHtml += '<div style="margin:3px 0;font-size:.85em;opacity:.6;font-style:italic;">'+esc(viewPlane.title)+'</div>';
@@ -858,8 +797,8 @@ export function handlePlanesCommand(m, args){
     } else if (viewPlane.type === 'fixed'){
       viewHtml += '<div style="margin:2px 0;font-size:.82em;opacity:.55;">Fixed phase (no natural orbit)</div>';
     }
-    if (isGM && viewPlane.note){
-      viewHtml += '<div style="margin:4px 0;font-size:.78em;opacity:.45;font-style:italic;">'+esc(viewPlane.note)+'</div>';
+    if (isGM && viewPs.note){
+      viewHtml += '<div style="margin:4px 0;font-size:.78em;opacity:.45;font-style:italic;">'+esc(viewPs.note)+'</div>';
     }
     viewHtml += '</div>';
 
