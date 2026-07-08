@@ -30,21 +30,23 @@ describe("Task-focused UI", () => {
       "sendToAll must archive so the broadcast persists in Roll20 chat history");
   });
 
-  it("renders the root help menu through the transient noarchive path with updated date wording", () => {
+  it("renders the root help menu as a docs-only reference (setup lives in Manage)", () => {
     freshInstall();
     helpRootMenu({ who: "GM (GM)", playerid: "GM" } as any);
     const msg = (globalThis as any)._chatLog.slice(-1)[0];
     assertEquals(msg.opts.noarchive, true);
-    assert(msg.msg.includes("Set Date"));
-    assert(msg.msg.includes("?{Set Date &#40;mm dd yyyy&#41;|"));
-    // Retired custom-event prompts are gone from Help.
+    // Documentation pages
+    assert(msg.msg.includes("Reading the Calendar"), "reading-the-calendar doc");
+    assert(msg.msg.includes("!cal help calendar"));
+    assert(msg.msg.includes("!cal help themes"));
+    assert(msg.msg.includes("!cal help eventcolors"));
+    // GM config launchers moved to Manage — not duplicated in Help.
+    assert(!msg.msg.includes("!cal set ?{"), "Set Date prompt moved to Manage");
+    assert(!msg.msg.includes("!cal source list"), "Sources moved to Manage");
+    assert(!msg.msg.includes("Prompt !cal moon on"), "moon-on prompt gone");
+    assert(!msg.msg.includes("Prompt !cal planes on"), "planes-on prompt gone");
+    // Retired custom-event prompts stay gone.
     assert(!msg.msg.includes("Prompt !cal add"));
-    assert(!msg.msg.includes("Prompt !cal addmonthly"));
-    assert(!msg.msg.includes("Prompt !cal addyearly"));
-    assert(msg.msg.includes("Prompt !cal moon on"));
-    assert(msg.msg.includes("Prompt !cal planes on"));
-    assert(!msg.msg.includes("Prompt !cal set"));
-    assert(!msg.msg.includes("Prompt !cal send"));
   });
 
   it("!cal additional renders the §5.4 subsystem hub whispered to caller", () => {

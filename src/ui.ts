@@ -682,77 +682,32 @@ export function helpStatusSummaryHtml(){
 }
 
 export function helpRootMenu(m){
-  var stNew = ensureSettings();
   var isGMNew = playerIsGM(m.playerid);
   var rowsNew = [helpStatusSummaryHtml()];
-  var todaySpec = _serialToDateSpec(todaySerial());
-  var promptSet = button('Set Date', 'set ?{Set Date (mm dd yyyy)|' + todaySpec + '}');
-  var promptMoonOn = button('Prompt !cal moon on', 'moon on ?{Date|' + todaySpec + '}');
-  var promptPlanesOn = button('Prompt !cal planes on', 'planes on ?{Date|' + todaySpec + '}');
+
+  // Docs-only reference. Navigation and setup are buttons on the calendar
+  // itself now: the month stepper walks time, Additional opens the views,
+  // and (GM) Manage holds all configuration. Help just explains what you're
+  // looking at.
+  var intro = 'The calendar is button-driven — you rarely need to type. Walk months with the '
+    + '<b>‹ Prev</b> / <b>Next ›</b> stepper, and open events' + (isGMNew ? ', moons, and planes' : ' and moons')
+    + ' from <b>Additional</b>.' + (isGMNew ? ' All setup lives in <b>Manage</b>.' : '')
+    + ' These pages explain what you are seeing.';
+  var footer = 'Navigate with buttons: the month stepper, <b>Additional</b>'
+    + (isGMNew ? ', and <b>Manage</b> (GM setup)' : '') + '.';
 
   rowsNew.push(taskCardHtml(
-    'Calendar',
-    'Open the campaign dashboard, jump to month or year views, and use prompt-driven buttons for syntax-heavy date commands.',
+    'Reference',
+    intro,
     [
-      mbP(m,'Today','today'),
-      mbP(m,'Show Month','show month'),
-      mbP(m,'Show Year','show year'),
-      promptSet
+      navP(m,'Reading the Calendar','calendar'),
+      navP(m,'Themes','themes'),
+      navP(m,'Event Colors','eventcolors')
     ],
-    'Typed forms: <code>!cal show month</code>, <code>!cal show year</code>, <code>!cal set &lt;dateSpec&gt;</code>.'
+    footer
   ));
 
-  if (isGMNew){
-    rowsNew.push(taskCardHtml(
-      'Events',
-      'Review the canon event source packs and the color key.',
-      [
-        mbP(m,'Sources','source list'),
-        navP(m,'Colors','eventcolors')
-      ],
-      'Typed forms: <code>!cal events</code>, <code>!cal source list</code>.'
-    ));
-  }
-
-  if (stNew.moonsEnabled !== false){
-    rowsNew.push(taskCardHtml(
-      'Moons',
-      'Check lunar status without opening the full rules surface first.',
-      [
-        mbP(m,'Moons','moon'),
-        promptMoonOn
-      ],
-      'Typed forms: <code>!cal moon</code>, <code>!cal moon on &lt;dateSpec&gt;</code>.'
-    ));
-  }
-
-  if (stNew.planesEnabled !== false){
-    rowsNew.push(taskCardHtml(
-      'Planes',
-      'Review planar movement, active extremes, and known future windows from a compact starting point.',
-      [
-        mbP(m,'Planes','planes'),
-        promptPlanesOn
-      ],
-      'Typed forms: <code>!cal planes</code>, <code>!cal planes on &lt;dateSpec&gt;</code>.'
-    ));
-  }
-
-  if (isGMNew){
-    var plModeNew = _normalizeDisplayMode(stNew.planesDisplayMode);
-    var verbNew = _subsystemVerbosityValue();
-    rowsNew.push(taskCardHtml(
-      'GM Admin',
-      'Reach the high-churn admin tools here and keep deeper configuration inside the existing drill-down menus.',
-      [
-        navP(m,'Name Variants','calendar'),
-        navP(m,'Themes','themes')
-      ],
-      'Views: Planes ' + _displayModeLabel(plModeNew) +
-      ' · Detail ' + (verbNew === 'minimal' ? 'minimal' : 'normal') +
-      '. Reset: <code>!cal resetcalendar</code>.'
-    ));
-  }
+  rowsNew.push('<div style="margin-top:6px;">' + button('Dashboard','today') + ' ' + button('Additional','additional') + '</div>');
 
   whisperUi(m.who, rowsNew.join(''));
   return;

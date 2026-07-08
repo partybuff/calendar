@@ -70,7 +70,8 @@ describe("Redesigned panel routing", () => {
 
     const log = (globalThis as any)._chatLog;
     const msg = String(lastChat().msg);
-    assert(msg.includes("GM Admin"));
+    // Admin/help routes to the docs-only Help reference (config now lives in Manage).
+    assert(msg.includes("Reading the Calendar"));
     assert(!log.some((entry: any) => String(entry.msg) === "undefined"));
   });
 
