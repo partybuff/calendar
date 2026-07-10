@@ -27,6 +27,7 @@ import { cleanWho, whisper, whisperUi } from './messaging.js';
 import { applyCalendarSystem, ensureSettings, getCal } from './state.js';
 import { _menuBox, currentDateLabel, setDate } from './ui.js';
 import { esc } from './rendering.js';
+import { resolveWorldKey } from './worlds/index.js';
 
 interface MoonAnchor {
   year: number;
@@ -60,13 +61,6 @@ interface Token {
 const KRYNN_MOON_KEYS: ReadonlySet<string> = new Set(['solinari', 'lunitari', 'nuitari']);
 
 export const TOKEN_SCHEMA_VERSION = 1;
-
-/** Supported world ids — must mirror the engine's WorldId union. Used
- *  for token world-validation. */
-const SUPPORTED_WORLDS: ReadonlySet<string> = new Set([
-  'eberron', 'faerun', 'greyhawk', 'dragonlance',
-  'exandria', 'mystara', 'birthright', 'gregorian',
-]);
 
 /** Strip any wrapping whitespace and Roll20's chat-injected zero-width
  *  characters. A pasted token can pick up surrounding spaces, an
@@ -134,8 +128,12 @@ export function parseToken(raw: string): ParseResult {
     return { ok: false, error: 'This token requires a newer version of the Roll20 calendar. Update the script.' };
   }
 
-  // world
-  if (typeof p.world !== 'string' || !SUPPORTED_WORLDS.has(p.world)) {
+  // world — accepts either a wrapper registry key ('faerunian') or the
+  // underlying engine WorldId ('faerun'); resolved against the OVERLAYS
+  // registry (worlds/index.ts::resolveWorldKey) so every registered world
+  // (including ones added later, e.g. Barovia) is accepted without a
+  // second hardcoded list here.
+  if (typeof p.world !== 'string' || !resolveWorldKey(p.world)) {
     return { ok: false, error: `Unknown world "${String(p.world)}".` };
   }
 
@@ -288,12 +286,9 @@ export function parseToken(raw: string): ParseResult {
   return { ok: true, token: payload as Token };
 }
 
-interface ApplyResult {
-  applied: true;
-  previousDateLabel: string;
-  newDateLabel: string;
-  dateChanged: boolean;
-}
+export type ApplyResult =
+  | { applied: true; previousDateLabel: string; newDateLabel: string; dateChanged: boolean }
+  | { applied: false; error: string };
 
 /** Apply a parsed token to `state.PartyBuffCalendar`. Snapshots the
  *  previous current-date label first so the §10.3 confirmation can
@@ -303,18 +298,36 @@ interface ApplyResult {
  *  PR 2 wires them into the engine moon/plane queries via the new
  *  `anchors?` / `positions?` parameters; until then they're persisted
  *  but inert. The dedicated slot keeps them outside the legacy
- *  `state.moons` / `state.planes` blobs so the migration is clean. */
+ *  `state.moons` / `state.planes` blobs so the migration is clean.
+ *
+ *  World resolution failure or an `applyCalendarSystem` rejection both
+ *  fail the whole apply with no partial writes — the resolution check
+ *  runs before any state read/write, and `applyCalendarSystem`'s result
+ *  is checked before settings/date/anchors are touched. */
 export function applyToken(token: Token): ApplyResult {
+  // World. Accepts either the wrapper registry key or the engine WorldId
+  // (see worlds/index.ts::resolveWorldKey) — resolve to the wrapper key
+  // BEFORE touching state so an unresolvable world (or one that
+  // `applyCalendarSystem` itself rejects) never leaves state half-written.
+  const sysKey = resolveWorldKey(token.world);
+  if (!sysKey) {
+    return { applied: false, error: `Unknown world "${token.world}".` };
+  }
+
   const previousDateLabel = currentDateLabel();
 
-  // World + variant. The web producer omits `variant` when it matches
-  // the world default, so absent = default per §10.3.
-  const sysKey = String(token.world).toLowerCase();
+  // Variant. The web producer omits `variant` when it matches the world
+  // default, so absent = default per §10.3.
   const sys = CALENDAR_SYSTEMS[sysKey] || {};
   const variantKey = String(
     token.variant || sys.defaultVariant || 'standard',
   ).toLowerCase();
-  applyCalendarSystem(sysKey, variantKey);
+  if (!applyCalendarSystem(sysKey, variantKey)) {
+    return {
+      applied: false,
+      error: `Could not apply world "${token.world}" (registry key "${sysKey}").`,
+    };
+  }
 
   // Settings. Palette → settings.colorTheme. Mirror calendarSystem +
   // calendarVariant so future reads of state.settings line up with what
@@ -367,7 +380,7 @@ export function applyToken(token: Token): ApplyResult {
   // wiring PR (PR 2c) only has one Dragonlance code path to support.
   let lunarAnchors: Record<string, MoonAnchor> = token.lunarAnchors ?? {};
   let krynnAnchor: CalendarDateMonth | undefined = token.krynnAnchor;
-  if (token.world === 'dragonlance') {
+  if (sysKey === 'dragonlance') {
     if (!krynnAnchor && token.lunarAnchors) {
       const krynnEntries = Object.entries(token.lunarAnchors).filter(([k]) =>
         KRYNN_MOON_KEYS.has(k),
@@ -439,6 +452,17 @@ export function handleTokenCommand(msg: { who: string; content: string; playerid
   }
 
   const result = applyToken(parsed.token);
+
+  if (result.applied !== true) {
+    whisperUi(
+      cleanWho(msg.who),
+      _menuBox(
+        'Setup token',
+        '<div style="opacity:.85;">' + esc(result.error) + '</div>',
+      ),
+    );
+    return;
+  }
 
   // §10.3 confirmations.
   whisperUi(

@@ -260,7 +260,11 @@ describe('applyToken — writes setup to state.PartyBuffCalendar', () => {
     freshAndComplete();
   });
 
-  it('switches world + variant via applyCalendarSystem', () => {
+  it('switches world + variant via applyCalendarSystem, resolving engine id to wrapper key', () => {
+    // Token carries the ENGINE id ('faerun'); the wrapper's registry key is
+    // 'faerunian'. Both the persisted calendarSystem and the actual month
+    // structure must reflect the resolved wrapper world, not the raw
+    // engine id (which would be an unknown CALENDAR_SYSTEMS key).
     const result = applyToken({
       v: 1,
       world: 'faerun',
@@ -268,7 +272,49 @@ describe('applyToken — writes setup to state.PartyBuffCalendar', () => {
     });
     assertEquals(result.applied, true);
     const root = (globalThis as any).state[state_name];
-    assertEquals(root.settings.calendarSystem, 'faerun');
+    assertEquals(root.settings.calendarSystem, 'faerunian');
+    assertEquals(root.calendar.months[0].name, 'Hammer', 'months must actually switch to Harptos');
+  });
+
+  it('applies a Barovia token (engineId === wrapperKey control, weekless world)', () => {
+    const result = applyToken({
+      v: 1,
+      world: 'barovia',
+      date: { kind: 'month', year: 735, monthIndex: 0, day: 1 },
+    });
+    assertEquals(result.applied, true);
+    const root = (globalThis as any).state[state_name];
+    assertEquals(root.settings.calendarSystem, 'barovia');
+    assertEquals(root.calendar.months[0].name, 'First Moon');
+    assertEquals(root.calendar.weekdays.length, 0);
+  });
+
+  it('applies a Greyhawk token (engineId === wrapperKey control)', () => {
+    const result = applyToken({
+      v: 1,
+      world: 'greyhawk',
+      date: { kind: 'month', year: 591, monthIndex: 0, day: 1 },
+    });
+    assertEquals(result.applied, true);
+    const root = (globalThis as any).state[state_name];
+    assertEquals(root.settings.calendarSystem, 'greyhawk');
+    // Structural index 0 is Needfest (an intercalary placed 'before'
+    // Fireseek); Fireseek itself is structural index 1.
+    assertEquals(root.calendar.months[1].name, 'Fireseek');
+  });
+
+  it('fails cleanly on a genuinely unknown world, with no state change', () => {
+    const root = (globalThis as any).state[state_name];
+    const before = JSON.parse(JSON.stringify(root));
+    const result = applyToken({
+      v: 1,
+      world: 'narnia',
+      date: { kind: 'month', year: 1, monthIndex: 0, day: 1 },
+    });
+    assertEquals(result.applied, false);
+    if (result.applied === false) assert(/unknown world/i.test(result.error));
+    const after = (globalThis as any).state[state_name];
+    assertEquals(JSON.stringify(after), JSON.stringify(before), 'state must be untouched on failure');
   });
 
   it('writes palette to settings.colorTheme (string when set, null when omitted)', () => {
@@ -346,6 +392,7 @@ describe('applyToken — writes setup to state.PartyBuffCalendar', () => {
       world: 'eberron',
       date: { kind: 'month', year: 998, monthIndex: 6, day: 14 },
     });
+    if (result.applied !== true) throw new Error('expected apply to succeed: ' + result.error);
     assert(result.previousDateLabel);
     assert(result.newDateLabel);
     // After freshInstall + completeSetup, the previous date is the
