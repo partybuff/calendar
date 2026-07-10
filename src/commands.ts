@@ -8,7 +8,7 @@ import { _displayMonthDayParts, _menuBox, currentDateLabel, sendCurrentDate, tas
 import { _getMoonSys, _moonPeakPhaseDay, moonEnsureSequences } from './moon.js';
 import { _planesTodaySummaryHtml } from './planes.js';
 import { whisper } from './messaging.js';
-export { send, sendToAll, sendToGM, sendUi, sendUiToAll, sendUiToGM, whisper, whisperParts, whisperUi, warnGM, warnGMUi, cleanWho } from './messaging.js';
+export { send, sendToAll, sendToAllParts, sendToGM, sendUi, sendUiToAll, sendUiToGM, whisper, whisperParts, whisperUi, warnGM, warnGMUi, cleanWho } from './messaging.js';
 
 
 /* ============================================================================

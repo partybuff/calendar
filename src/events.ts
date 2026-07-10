@@ -7,7 +7,7 @@ import { _daysBeforeYear, _isLeapMonth, _nextActiveMi, _prevActiveMi, _serialCac
 import { DaySpec, Parse, isTodayVisibleInRange } from './parsing.js';
 import { _calendarCellInnerHtml, _renderHarptosFestivalStrip, clamp, closeMonthTable, esc, eventLineHtml, formatDateLabel, makeDayCtx, openMonthTable, renderMiniCal, renderMonthTable, tdHtmlForDay, yearHTMLFor } from './rendering.js';
 import { _displayMonthDayParts, _menuBox, currentDateLabel, monthStepperHtml, nextForDayOnly, nextForMonthDay, showNavTailHtml } from './ui.js';
-import { send, sendToAll, whisper } from './commands.js';
+import { sendToAllParts, whisper, whisperParts } from './commands.js';
 import { intercalaryRenderFor } from './worlds/index.js';
 
 
@@ -485,9 +485,13 @@ export function _deliverAdditionalCalendarRange(opts){
     if (opts.who) whisper(opts.who, _topLevelCalendarGuidanceHtml(opts.args || []));
     return false;
   }
-  var html = (typeof opts.render === 'function') ? opts.render(spec) : buildCalendarsHtmlForSpec(spec);
-  if (opts.dest === 'broadcast') sendToAll(html);
-  else whisper(opts.who, html);
+  // `render` may return a single HTML string (unchunked, existing behavior)
+  // or an array of HTML parts (year-scale callers, e.g. planes ranges, that
+  // chunk one message per month group to stay under Roll20's size limit).
+  var result = (typeof opts.render === 'function') ? opts.render(spec) : buildCalendarsHtmlForSpec(spec);
+  var parts = Array.isArray(result) ? result : [result];
+  if (opts.dest === 'broadcast') sendToAllParts(parts);
+  else whisperParts(opts.who, parts);
   return true;
 }
 
@@ -553,15 +557,25 @@ export function _deliverTopLevelCalendarRange(opts){
     if (opts.who) whisper(opts.who, _topLevelCalendarGuidanceHtml(opts.args || []));
     return false;
   }
-  var calHtml = buildCalendarsHtmlForSpec(spec);
+  // Year-scale ranges (>2 month tables) are split into one sendChat per
+  // month group — a full 12-month year in one message runs ~300KB, well
+  // past Roll20's practical chat message size limit. Small ranges (<=2
+  // months) come back as a single part, byte-identical to the old
+  // one-message behavior.
+  var calParts = buildCalendarsHtmlPartsForSpec(spec);
   if (opts.dest === 'broadcast') {
     // Broadcasts are non-interactive (Roll20 /direct strips buttons), so no
-    // stepper/tail — just the calendar.
-    sendToAll(calHtml);
+    // stepper/tail — just the calendar, chunked across messages in order.
+    sendToAllParts(calParts);
   } else {
     // Interactive show output: walk-in-place stepper (anchored to the shown
-    // month) + a home/Additional tail.
-    whisper(opts.who, calHtml + monthStepperHtml(spec.start) + showNavTailHtml());
+    // month) + a home/Additional tail. The tail only makes sense once, so it
+    // rides on the LAST message; earlier chunks are calendar-only.
+    var lastIdx = calParts.length - 1;
+    for (var i = 0; i < calParts.length; i++){
+      if (i === lastIdx) whisper(opts.who, calParts[i] + monthStepperHtml(spec.start) + showNavTailHtml());
+      else whisper(opts.who, calParts[i]);
+    }
   }
   return true;
 }
@@ -872,10 +886,25 @@ export function _monthsFromRangeSpec(spec){
   return months;
 }
 
-export function buildCalendarsHtmlForSpec(spec){
-  spec = spec || {};
-  var months = _monthsFromRangeSpec(spec);
-  var out = ['<div style="text-align:left;">'];
+// A message carrying more than this many month tables risks blowing past
+// Roll20's practical chat message size limit at year scale (a 12-month year
+// in one message runs ~300KB; see events.ts _deliverTopLevelCalendarRange /
+// planes.ts _planesRangeHtml). Ranges at or under this size stay a single
+// message; larger ranges are chunked into one message per group, split only
+// BETWEEN month tables so every message is a self-contained HTML fragment.
+export var CALENDAR_RANGE_MAX_MONTHS_PER_MESSAGE = 2;
+
+export function _chunkMonthsForDelivery(months){
+  months = months || [];
+  if (months.length <= CALENDAR_RANGE_MAX_MONTHS_PER_MESSAGE) return [months];
+  var chunks = [];
+  for (var i = 0; i < months.length; i += CALENDAR_RANGE_MAX_MONTHS_PER_MESSAGE){
+    chunks.push(months.slice(i, i + CALENDAR_RANGE_MAX_MONTHS_PER_MESSAGE));
+  }
+  return chunks;
+}
+
+function _calendarsRenderContext(spec, months){
   var extraEventsFn = (typeof spec.extraEventsFn === 'function') ? spec.extraEventsFn : null;
   var includeCalendarEvents = !(spec.includeCalendarEvents === false);
   var includeAdjacentStrips = !(spec.includeAdjacentStrips === false);
@@ -902,29 +931,73 @@ export function buildCalendarsHtmlForSpec(spec){
     (!!boundary.prev && !present[prevKey] && stripHasToday(boundary.prev)) ||
     (!!boundary.next && !present[nextKey] && stripHasToday(boundary.next));
 
-  if (boundary.prev && !present[ boundary.prev.y + '|' + boundary.prev.mi ]){
-    out.push('<div style="'+STYLES.wrap+'">'+renderMonthStripWantedDays(boundary.prev.y, boundary.prev.mi, boundary.prev.wanted, dimActiveAll, extraEventsFn, includeCalendarEvents, 'prev')+'</div>');
+  return {
+    extraEventsFn: extraEventsFn,
+    includeCalendarEvents: includeCalendarEvents,
+    present: present,
+    boundary: boundary,
+    dimActiveAll: dimActiveAll
+  };
+}
+
+// Renders one self-contained `<div>` fragment for a subset of `months`.
+// `includePrevStrip`/`includeNextStrip` gate the boundary partial-month
+// strips so they only attach to the first/last chunk of a chunked delivery
+// (they're outside `spec.months`, so they'd otherwise never appear, or
+// appear on every chunk).
+function _calendarsHtmlChunk(spec, monthsChunk, ctx, includePrevStrip, includeNextStrip){
+  var out = ['<div style="text-align:left;">'];
+  var boundary = ctx.boundary, present = ctx.present;
+
+  if (includePrevStrip && boundary.prev && !present[ boundary.prev.y + '|' + boundary.prev.mi ]){
+    out.push('<div style="'+STYLES.wrap+'">'+renderMonthStripWantedDays(boundary.prev.y, boundary.prev.mi, boundary.prev.wanted, ctx.dimActiveAll, ctx.extraEventsFn, ctx.includeCalendarEvents, 'prev')+'</div>');
   }
 
-  for (var k=0; k<months.length; k++){
-    var m = months[k];
+  for (var k=0; k<monthsChunk.length; k++){
+    var m = monthsChunk[k];
     out.push('<div style="'+STYLES.wrap+'">'+renderMonthTable({
       year:m.y,
       mi:m.mi,
       mode:'full',
-      dimPast: dimActiveAll,
-      extraEventsFn: extraEventsFn,
-      includeCalendarEvents: includeCalendarEvents,
+      dimPast: ctx.dimActiveAll,
+      extraEventsFn: ctx.extraEventsFn,
+      includeCalendarEvents: ctx.includeCalendarEvents,
       headerBarsHtml: spec.headerBarsHtml || undefined
     })+'</div>');
   }
 
-  if (boundary.next && !present[ boundary.next.y + '|' + boundary.next.mi ]){
-    out.push('<div style="'+STYLES.wrap+'">'+renderMonthStripWantedDays(boundary.next.y, boundary.next.mi, boundary.next.wanted, dimActiveAll, extraEventsFn, includeCalendarEvents, 'next')+'</div>');
+  if (includeNextStrip && boundary.next && !present[ boundary.next.y + '|' + boundary.next.mi ]){
+    out.push('<div style="'+STYLES.wrap+'">'+renderMonthStripWantedDays(boundary.next.y, boundary.next.mi, boundary.next.wanted, ctx.dimActiveAll, ctx.extraEventsFn, ctx.includeCalendarEvents, 'next')+'</div>');
   }
 
   out.push('</div>');
   return out.join('');
+}
+
+export function buildCalendarsHtmlForSpec(spec){
+  spec = spec || {};
+  var months = _monthsFromRangeSpec(spec);
+  var ctx = _calendarsRenderContext(spec, months);
+  return _calendarsHtmlChunk(spec, months, ctx, true, true);
+}
+
+// Same rendering as buildCalendarsHtmlForSpec, but returns an ARRAY of HTML
+// parts — one per month-table message-safe group — so callers can deliver
+// each part as a separate sendChat instead of one giant blob. For ranges at
+// or under CALENDAR_RANGE_MAX_MONTHS_PER_MESSAGE months this returns a
+// single-element array whose content is byte-identical to
+// buildCalendarsHtmlForSpec's output (no chunking regression for
+// month/small-range views).
+export function buildCalendarsHtmlPartsForSpec(spec){
+  spec = spec || {};
+  var months = _monthsFromRangeSpec(spec);
+  var ctx = _calendarsRenderContext(spec, months);
+  var chunks = _chunkMonthsForDelivery(months);
+  var parts = [];
+  for (var i = 0; i < chunks.length; i++){
+    parts.push(_calendarsHtmlChunk(spec, chunks[i], ctx, i === 0, i === chunks.length - 1));
+  }
+  return parts;
 }
 
 export function stripRangeExtensionDynamic(spec){
