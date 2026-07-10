@@ -9,7 +9,7 @@ import { _monthRangeFromSerial, _renderSyntheticMiniCal, button, esc, handoutWra
 import { _displayMonthDayParts, _legendLine, _menuBox, _serialToDateSpec, _shiftSerialByMonth, dateLabelFromSerial, formalDateLabelFromSerial, parseDatePrefixForAdd } from './ui.js';
 import { send, whisper, whisperParts } from './commands.js';
 import { _getPlaneData, getPlanarState, getPlanesState } from './planes.js';
-import { getWorld } from './worlds/index.js';
+import { getStructuralArray, getWorld } from './worlds/index.js';
 import { getEngineWorld, getEngineWorldId, getMoonOpts, serialToCalendarDate } from './engine-opts.js';
 
 /* ============================================================================
@@ -372,8 +372,16 @@ export function _moonNextThresholdEntry(moonName, serial, maxDays){
     var opts = getMoonOpts();
     var nextFull = engineMoons.nextEvent(worldId, key, fromDate, 'full', maxDays, opts);
     var nextNew  = engineMoons.nextEvent(worldId, key, fromDate, 'new',  maxDays, opts);
-    var fullSer = nextFull ? toSerial(nextFull.year, _calendarDateMonthIndex(nextFull), 'day' in nextFull ? nextFull.day : 1) : null;
-    var newSer  = nextNew  ? toSerial(nextNew.year,  _calendarDateMonthIndex(nextNew),  'day' in nextNew  ? nextNew.day  : 1) : null;
+    var fullSer = null;
+    if (nextFull){
+      var wFull = _calendarDateToWrapper(nextFull);
+      fullSer = toSerial(wFull.year, wFull.mi, 'day' in nextFull ? nextFull.day : 1);
+    }
+    var newSer = null;
+    if (nextNew){
+      var wNew = _calendarDateToWrapper(nextNew);
+      newSer = toSerial(wNew.year, wNew.mi, 'day' in nextNew ? nextNew.day : 1);
+    }
     var picked: { type: string; ser: number } | null = null;
     if (fullSer != null) picked = { type: 'full', ser: fullSer };
     if (newSer != null && (picked == null || newSer < picked.ser)) picked = { type: 'new', ser: newSer };
@@ -386,25 +394,38 @@ export function _moonNextThresholdEntry(moonName, serial, maxDays){
   }
 }
 
-// Engine CalendarDate → wrapper structural-mi. Used inside
+// Engine CalendarDate → wrapper (structural-mi, year). Used inside
 // _moonNextThresholdEntry / _moonNextEvent so we can return a wrapper
-// serial. Reverse of `serialToCalendarDate`.
-function _calendarDateMonthIndex(date: any): number {
-  // Find the structural slot whose translation matches this engine date.
+// serial. Reverse of `serialToCalendarDate` (src/engine-opts.ts): that
+// function ADDS the structural slot's `yearDelta` when it builds an
+// intercalary engine date from a wrapper (year, mi) pair
+// (`year: wrapped.year + slot.translation.yearDelta`), so converting an
+// engine date back must SUBTRACT that same delta, not pass `date.year`
+// through unchanged. `cal.months[i]` (the runtime, mutable array) never
+// carries `engineMonthIndex` / `intercalaryKey` — those translation
+// fields live only in the world registry's structural-slot cache
+// (`getStructuralArray`, src/worlds/index.ts) — so look the match up
+// there, not on `getCal().months`.
+export function _calendarDateToWrapper(date: any): { mi: number; year: number } {
   var sysKey = String(ensureSettings().calendarSystem || 'eberron');
-  var arr = getCal().months;
-  for (var i = 0; i < arr.length; i++){
-    var m = arr[i] as any;
-    if (date.kind === 'month'){
-      if (!m.isIntercalary && m.engineMonthIndex === date.monthIndex) return i;
-    } else {
-      if (m.isIntercalary && m.intercalaryKey === date.intercalaryKey) return i;
+  var arr = getStructuralArray(sysKey);
+  if (arr){
+    for (var i = 0; i < arr.length; i++){
+      var t = arr[i].translation as any;
+      if (date.kind === 'month'){
+        if (t.kind === 'month' && t.engineMonthIndex === date.monthIndex) return { mi: i, year: date.year };
+      } else {
+        if (t.kind === 'intercalary' && t.intercalaryKey === date.intercalaryKey) return { mi: i, year: date.year - t.yearDelta };
+      }
     }
   }
-  // Fallback: structural slot lookup via the world overlay (older calendar
-  // blobs may not have engineMonthIndex inlined on each month slot).
+  // Fallback: name/index-based structural lookup for older calendar blobs
+  // that predate the structural-translation cache. No yearDelta info is
+  // available here, so an intercalary slot with a nonzero delta may land
+  // a year off on legacy state — the primary lookup above should always
+  // hit first on any campaign running off the current world registry.
   var slot = _structuralSlotIndex(sysKey, date);
-  return slot != null ? slot : 0;
+  return { mi: slot != null ? slot : 0, year: date.year };
 }
 
 function _structuralSlotIndex(sysKey: string, date: any): number | null {
@@ -467,7 +488,8 @@ export function _moonNextEvent(moonName, serial, type){
     var horizon = MOON_PREDICTION_LIMITS.highMaxDays;
     var result = engineMoons.nextEvent(worldId, key, fromDate, type, horizon, getMoonOpts());
     if (!result) return null;
-    return toSerial(result.year, _calendarDateMonthIndex(result), 'day' in result ? result.day : 1);
+    var w = _calendarDateToWrapper(result);
+    return toSerial(w.year, w.mi, 'day' in result ? result.day : 1);
   } catch (_e){
     return null;
   }

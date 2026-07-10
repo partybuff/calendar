@@ -1,6 +1,6 @@
 // Today — Combined detail from all subsystems
 import { CALENDAR_SYSTEMS, CONFIG_DEFAULTS } from './config.js';
-import { COLOR_THEMES, SEASON_SETS, STYLES, script_name, state_name } from './constants.js';
+import { COLOR_THEMES, LABELS, SEASON_SETS, STYLES, script_name, state_name } from './constants.js';
 import { _sourceAllowedForCalendar, applyCalendarSystem, applySeasonSet, defaults, ensureSettings, getAutoSuppressedSources, getCal, refreshAndSend, refreshCalendarState, resetToDefaults, resolveSourceKeyInput, sourceDisplayLabel, sourceSuppressionState, titleCase, weekLength } from './state.js';
 import { handleTokenCommand } from './token.js';
 import { colorsAPI } from './color.js';
@@ -9,7 +9,7 @@ import { DaySpec, Parse } from './parsing.js';
 import { _deliverAdditionalCalendarRange, _deliverTopLevelCalendarRange, buildAdditionalRangesCommand, buildCalendarsHtmlForSpec, defaultKeyFor, eventDisplayName, getEventColor, mergeInNewDefaultEvents, occurrencesInRange } from './events.js';
 import { button, clamp, esc, eventLineHtml, _monthRangeFromSerial } from './rendering.js';
 import { _displayMonthDayParts, _menuBox, _serialToDateSpec, _shiftSerialByMonth, additionalHubHtml, calendarSystemListHtml, currentDateLabel, dateLabelFromSerial, formalCurrentDateLabel, helpCalendarSystemMenu, helpEventColorsMenu, helpRootMenu, helpThemesMenu, manageHubHtml, nextForDayOnly, sendCurrentDate, setDate, settingsPanelHtml, stepDays, taskCardHtml, themeListHtml } from './ui.js';
-import { _normalizePackedWords, _playerTodayHtml, _showDefaultCalView, send, whisper, whisperUi } from './commands.js';
+import { _normalizePackedWords, _playerTodayHtml, _showDefaultCalView, cleanWho, send, whisper, whisperUi } from './commands.js';
 import { _getMoonSys, _moonLastEvent, _moonNextEvent, _moonPeakPhaseDay, _moonPhaseEmoji, _moonPhaseLabel, handleMoonCommand, invalidateMoonModel, moonEnsureSequences, moonPhaseAt } from './moon.js';
 import { getPlanarState, _getAllPlaneData, _getPlaneData, handlePlanesCommand } from './planes.js';
 import { enginePlanes, getPlanePositions, serialToCalendarDate } from './engine-opts.js';
@@ -495,6 +495,14 @@ function _lunarAllHtml(year){
       while (true){
         var next = _moonNextEvent(moon.name, cursor, t);
         if (next == null || next > yearEnd) break;
+        // Defensive forward-progress guard: `next` must be strictly after
+        // `cursor`. If the engine↔wrapper serial mapping ever regresses
+        // (e.g. an intercalary yearDelta mismatch), a non-advancing cursor
+        // would spin this loop forever. Bail instead of hanging the API.
+        if (next <= cursor){
+          log('[' + script_name + '] lunar-all: moon "' + moon.name + '" (' + t + ') did not advance past serial ' + cursor + ' (got ' + next + '); aborting year scan.');
+          break;
+        }
         entries.push({ serial: next, moonName: moon.name, moonColor: moon.color || '#888888', type: t === 'full' ? 'Full' : 'New' });
         cursor = next;
       }
@@ -803,9 +811,18 @@ export var commands = {
     if (sub === 'manage'){
       var mAction = (a[3] || '').toLowerCase();
       if (!mAction) return helpRootMenu(m);
-      // Route management actions to their existing handlers
+      // Route management actions to their existing handlers. Apply the same
+      // gm:true gate the top-level dispatcher applies (src/boot-register.ts)
+      // — this re-dispatch bypassed it before, letting non-GM callers reach
+      // gm:true actions like resetcalendar/advance/retreat directly.
+      var mTarget = commands[mAction];
+      if (!mTarget) return helpRootMenu(m);
+      if (typeof mTarget !== 'function' && mTarget.gm && !playerIsGM(m.playerid)){
+        whisper(cleanWho(m.who), LABELS.gmOnlyNotice);
+        return;
+      }
       var mRest = a.slice(3);
-      return commands[mAction] ? (typeof commands[mAction] === 'function' ? commands[mAction](m, ['!cal'].concat(mRest)) : commands[mAction].run(m, ['!cal'].concat(mRest))) : helpRootMenu(m);
+      return typeof mTarget === 'function' ? mTarget(m, ['!cal'].concat(mRest)) : mTarget.run(m, ['!cal'].concat(mRest));
     }
     // Both GMs and players get the consolidated Today view.
     // sendCurrentDate handles audience-appropriate output internally.
