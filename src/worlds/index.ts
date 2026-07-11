@@ -11,13 +11,13 @@
  * without per-call-site refactors.
  */
 
-import { worlds as engineWorlds } from '@partybuff/calendar-engine';
+import { worlds as engineWorlds } from '@partybuff/calendar-engine/lite';
 import type {
   World as EngineWorld,
   WorldId as EngineWorldId,
   Month as EngineMonth,
   Intercalary as EngineIntercalary,
-} from '@partybuff/calendar-engine';
+} from '@partybuff/calendar-engine/lite';
 import type {
   WorldDefinition,
   CalendarDefinition,

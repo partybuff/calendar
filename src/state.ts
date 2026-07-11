@@ -1,5 +1,5 @@
 // Sections 2-3: Default State Factory + State & Settings
-import { date as engineDate } from '@partybuff/calendar-engine';
+import { date as engineDate } from '@partybuff/calendar-engine/lite';
 import { CALENDAR_SYSTEMS, CONFIG_DEFAULTS, CONFIG_MONTH_LENGTHS, CONFIG_START_DATE } from './config.js';
 import { CALENDAR_STRUCTURE_SETS, COLOR_THEMES, DEFAULT_EVENTS, DEFAULT_EVENT_SOURCE_CALENDARS, LABELS, SEASON_SETS, script_name, state_name } from './constants.js';
 import { getEngineId, getStructuralSlot, getWorld } from './worlds/index.js';

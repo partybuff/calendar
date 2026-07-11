@@ -1,6 +1,6 @@
 // Section 20: Moon System
-import { moons as engineMoons } from '@partybuff/calendar-engine';
-import type { MoonPhase as EngineMoonPhase } from '@partybuff/calendar-engine';
+import { moons as engineMoons } from '@partybuff/calendar-engine/lite';
+import type { MoonPhase as EngineMoonPhase } from '@partybuff/calendar-engine/lite';
 import { CONTRAST_MIN_HEADER, STYLES } from './constants.js';
 import { defaults, ensureSettings, getCal, titleCase } from './state.js';
 import { _contrast, applyBg } from './color.js';

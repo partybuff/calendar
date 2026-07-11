@@ -11,7 +11,7 @@
 // Where the engine and the wrapper agree exactly on a calculation (the
 // Gregorian leap-year rule, for instance) the wrapper delegates so we have
 // a single source of truth.
-import { date as engineDate } from '@partybuff/calendar-engine';
+import { date as engineDate } from '@partybuff/calendar-engine/lite';
 import { ensureSettings, getCal, weekLength } from './state.js';
 import { clamp } from './rendering.js';
 import { weekdayProgressionFor, intercalaryRenderFor } from './worlds/index.js';

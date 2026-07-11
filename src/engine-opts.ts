@@ -25,15 +25,14 @@
  * I/O); we don't memoize.
  */
 
-import { worlds, planes as enginePlanes } from '@partybuff/calendar-engine';
+import { worlds, planes as enginePlanes } from '@partybuff/calendar-engine/lite';
 import type {
   CalendarDate as EngineCalendarDate,
-  MoonAnchor as EngineMoonAnchor,
   WorldId as EngineWorldId,
   World as EngineWorld,
-} from '@partybuff/calendar-engine';
-import type { PhaseOptions } from '@partybuff/calendar-engine/moons';
-import type { PlanePositions } from '@partybuff/calendar-engine/planes';
+  PhaseOptions,
+  PlanePositions,
+} from '@partybuff/calendar-engine/lite';
 import { state_name } from './constants.js';
 import { ensureSettings } from './state.js';
 import { fromSerial as wrapperFromSerial } from './date-math.js';
