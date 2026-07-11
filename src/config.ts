@@ -129,6 +129,7 @@ export var CALENDAR_SYSTEMS: Record<string, any> = (function(){
                    description: '11 months of 29-32 days (328-day year). 7-day week. Exandrian calendar from Critical Role.' },
     mystara:     { worldLabel: 'Mystara',
                    description: '12 months of 28 days (336-day year). 7-day week. Known World / BECMI setting.' },
+    barovia:     { worldLabel: 'Barovia' },
     birthright:  { worldLabel: 'Aebrynis',
                    description: '12 months of 32 days plus 4 festival days (388-day year). 8-day week. Deismaar reckoning.' },
   };

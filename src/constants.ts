@@ -17,9 +17,13 @@ import { getStructuralArray, WORLD_ORDER, WORLDS } from './worlds/index.js';
 
 // User-visible "speaker" name in Roll20 chat. Brand-facing.
 export var script_name = 'Party Buff Calendar';
-// Roll20 state key. DO NOT rename — would orphan existing saved data for
-// any GM whose game has previously persisted calendar state.
-export var state_name = 'CALENDAR';
+// Roll20 state key. Namespaced to avoid colliding with the generic
+// `state.CALENDAR` slot other installed API scripts may also use.
+// Renaming this is safe: `checkInstall()` (src/state.ts) runs a one-time
+// migration that moves any pre-existing `state.CALENDAR` blob wholesale to
+// this key on the first `!cal` after upgrade, so old campaigns are not
+// orphaned. See the migration at the top of `checkInstall()`.
+export var state_name = 'PartyBuffCalendar';
 
 /* --- Season sets ----------------------------------------------------------*/
 // Season sets are Roll20-side because the engine's Season shape doesn't yet
