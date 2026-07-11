@@ -4,7 +4,7 @@
 // canonical world data (months, intercalaries, moon cycles, holidays) now
 // lives in `@partybuff/calendar-engine` and is consumed via `src/worlds/`.
 
-import { palettes } from '@partybuff/calendar-engine';
+import { palettes } from '@partybuff/calendar-engine/lite';
 import { CONFIG_ERA_LABEL } from './config.js';
 import { getStructuralArray, WORLD_ORDER, WORLDS } from './worlds/index.js';
 

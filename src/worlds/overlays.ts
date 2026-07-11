@@ -13,7 +13,7 @@
  * data, holiday anchors — comes from the engine. Anything that's Roll20-side
  * presentation lives here.
  */
-import type { World } from '@partybuff/calendar-engine';
+import type { World } from '@partybuff/calendar-engine/lite';
 import type {
   WeekdayProgressionMode,
   IntercalaryRenderMode,

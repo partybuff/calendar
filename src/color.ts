@@ -2,7 +2,7 @@
 import { CONTRAST_MIN_HEADER, NAMED_COLORS } from './constants.js';
 import { getEventColor } from './events.js';
 import { _parseSharpColorToken } from './ui.js';
-import { colors as _engineColors } from '@partybuff/calendar-engine';
+import { colors as _engineColors } from '@partybuff/calendar-engine/lite';
 
 
 /* ============================================================================
