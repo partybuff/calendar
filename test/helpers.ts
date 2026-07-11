@@ -11,5 +11,4 @@ export function freshInstall() {
 
 export function completeSetup() {
   getSetupState().status = 'complete';
-  getSetupState().draft = {};
 }

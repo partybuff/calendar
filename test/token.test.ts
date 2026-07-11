@@ -104,56 +104,34 @@ describe('parseToken — decode and structural validation', () => {
     );
   });
 
-  it('rejects lunarAnchors with bad phase', () => {
-    expectFail(
-      parseToken(encode({
-        ...MIN_VALID,
-        lunarAnchors: { olarune: { year: 998, monthIndex: 0, day: 1, phase: 'quarter' } },
-      })),
-      /phase/i,
-    );
-  });
-
-  it('rejects planarAnchors on non-Eberron tokens', () => {
-    expectFail(
-      parseToken(encode({
-        ...MIN_VALID,
-        world: 'faerun',
-        date: { kind: 'month', year: 1372, monthIndex: 0, day: 1 },
-        planarAnchors: { daanvi: 5 },
-      })),
-      /eberron/i,
-    );
-  });
-
-  it('rejects planarAnchors with non-integer offsets', () => {
-    expectFail(
-      parseToken(encode({ ...MIN_VALID, planarAnchors: { daanvi: 'oops' } })),
-      /integer/i,
-    );
-  });
-
   it('accepts the minimal valid token', () => {
     const token = expectOk(parseToken(encode(MIN_VALID)));
     assertEquals(token.world, 'eberron');
     assertEquals(token.v, TOKEN_SCHEMA_VERSION);
   });
 
-  it('accepts a fully-populated token', () => {
+  it('accepts a fully-populated token (variant + palette only — no anchor fields)', () => {
     const token = expectOk(parseToken(encode({
       ...MIN_VALID,
       variant: 'standard',
       palette: 'lunar',
-      lunarAnchors: {
-        olarune: { year: 998, monthIndex: 0, day: 12, phase: 'full' },
-        aryth: { year: 998, monthIndex: 5, day: 3, phase: 'new', hour: 14 },
-      },
-      planarAnchors: { daanvi: 0, fernia: 14 },
     })));
+    assertEquals(token.variant, 'standard');
     assertEquals(token.palette, 'lunar');
-    assert(token.lunarAnchors);
-    assertEquals(Object.keys(token.lunarAnchors).length, 2);
-    assertEquals(token.planarAnchors?.fernia, 14);
+  });
+
+  it('ignores legacy lunarAnchors/krynnAnchor/planarAnchors fields on the raw payload (canon-only, structural)', () => {
+    // Moons and planes are canon-only (#198): getMoonOpts()/getPlanePositions()
+    // always return {}. A token no longer declares these fields, and an
+    // older producer that still sends them must not fail to parse — the
+    // fields are simply not read.
+    const token = expectOk(parseToken(encode({
+      ...MIN_VALID,
+      lunarAnchors: { olarune: { year: 998, monthIndex: 0, day: 1, phase: 'quarter' } },
+      krynnAnchor: { kind: 'intercalary', year: 998, intercalaryKey: 'x', day: 1 },
+      planarAnchors: { daanvi: 'oops' },
+    })));
+    assertEquals(token.world, 'eberron');
   });
 
   it('strips wrapping whitespace before decode', () => {
@@ -170,88 +148,6 @@ describe('parseToken — decode and structural validation', () => {
       palette: 'fearûn-default',
     })));
     assertEquals(token.palette, 'fearûn-default');
-  });
-});
-
-describe('parseToken — Dragonlance krynnAnchor and per-moon constraints', () => {
-  const DL_DATE = { kind: 'month' as const, year: 350, monthIndex: 0, day: 1 };
-  const DL_BASE = { v: 1, world: 'dragonlance', date: DL_DATE };
-
-  it('accepts krynnAnchor on a Dragonlance token', () => {
-    const token = expectOk(parseToken(encode({
-      ...DL_BASE,
-      krynnAnchor: { kind: 'month', year: 350, monthIndex: 6, day: 14 },
-    })));
-    assertEquals(token.krynnAnchor?.day, 14);
-  });
-
-  it('rejects krynnAnchor on non-Dragonlance tokens', () => {
-    expectFail(
-      parseToken(encode({
-        ...MIN_VALID,
-        krynnAnchor: { kind: 'month', year: 998, monthIndex: 0, day: 1 },
-      })),
-      /dragonlance/i,
-    );
-  });
-
-  it('rejects krynnAnchor that is not month-kind', () => {
-    expectFail(
-      parseToken(encode({
-        ...DL_BASE,
-        krynnAnchor: { kind: 'intercalary', year: 350, intercalaryKey: 'x', day: 1 },
-      })),
-      /month-kind/i,
-    );
-  });
-
-  it('rejects non-Krynn moon keys in Dragonlance lunarAnchors', () => {
-    expectFail(
-      parseToken(encode({
-        ...DL_BASE,
-        lunarAnchors: { olarune: { year: 350, monthIndex: 0, day: 1, phase: 'full' } },
-      })),
-      /dragonlance has no moon/i,
-    );
-  });
-
-  it('rejects Krynn lunarAnchors that disagree on date or phase', () => {
-    expectFail(
-      parseToken(encode({
-        ...DL_BASE,
-        lunarAnchors: {
-          solinari: { year: 350, monthIndex: 6, day: 14, phase: 'full' },
-          lunitari: { year: 350, monthIndex: 6, day: 14, phase: 'full' },
-          nuitari: { year: 350, monthIndex: 6, day: 15, phase: 'full' },
-        },
-      })),
-      /disagrees with the triad/i,
-    );
-  });
-
-  it('rejects krynnAnchor and lunarAnchors together on Dragonlance', () => {
-    expectFail(
-      parseToken(encode({
-        ...DL_BASE,
-        krynnAnchor: { kind: 'month', year: 350, monthIndex: 6, day: 14 },
-        lunarAnchors: { solinari: { year: 350, monthIndex: 6, day: 14, phase: 'full' } },
-      })),
-      /either krynnanchor or lunaranchors/i,
-    );
-  });
-
-  it('accepts legacy triplicated Krynn lunarAnchors when all entries agree', () => {
-    const token = expectOk(parseToken(encode({
-      ...DL_BASE,
-      lunarAnchors: {
-        solinari: { year: 350, monthIndex: 6, day: 14, phase: 'full' },
-        lunitari: { year: 350, monthIndex: 6, day: 14, phase: 'full' },
-        nuitari: { year: 350, monthIndex: 6, day: 14, phase: 'full' },
-      },
-    })));
-    // Parse leaves the entries on the token as-is; applyToken does the
-    // translation to canonical krynnAnchor on persistence.
-    assertEquals(Object.keys(token.lunarAnchors ?? {}).length, 3);
   });
 });
 
@@ -336,54 +232,19 @@ describe('applyToken — writes setup to state.PartyBuffCalendar', () => {
     assertEquals(root2.settings.colorTheme, null);
   });
 
-  it('persists lunarAnchors + planarAnchors under state.imported for engine wiring', () => {
-    applyToken({
-      v: 1,
-      world: 'eberron',
-      date: { kind: 'month', year: 998, monthIndex: 0, day: 1 },
-      lunarAnchors: {
-        olarune: { year: 998, monthIndex: 0, day: 12, phase: 'full' },
-      },
-      planarAnchors: { daanvi: 5 },
-    });
-    const root = (globalThis as any).state[state_name];
-    assert(root.imported);
-    assertEquals(root.imported.lunarAnchors.olarune.phase, 'full');
-    assertEquals(root.imported.planarAnchors.daanvi, 5);
-    assertEquals(root.imported.schemaVersion, 1);
-  });
-
-  it('persists krynnAnchor directly when the producer sent the canonical shape', () => {
+  it('never creates state.imported — anchors are retired, not persisted', () => {
+    // Canon-only per #198: applyToken no longer reads or stores lunar/
+    // krynn/planar anchors. Even a raw payload carrying legacy anchor
+    // fields (an older web producer) must not leave a `state.imported`
+    // slot behind.
     applyToken({
       v: 1,
       world: 'dragonlance',
       date: { kind: 'month', year: 350, monthIndex: 0, day: 1 },
-      krynnAnchor: { kind: 'month', year: 350, monthIndex: 6, day: 14 },
+      ...({ krynnAnchor: { kind: 'month', year: 350, monthIndex: 6, day: 14 } } as any),
     });
     const root = (globalThis as any).state[state_name];
-    assert(root.imported);
-    assertEquals(root.imported.krynnAnchor.day, 14);
-    assertEquals(Object.keys(root.imported.lunarAnchors).length, 0);
-  });
-
-  it('translates legacy triplicated full Krynn lunarAnchors into krynnAnchor', () => {
-    applyToken({
-      v: 1,
-      world: 'dragonlance',
-      date: { kind: 'month', year: 350, monthIndex: 0, day: 1 },
-      lunarAnchors: {
-        solinari: { year: 350, monthIndex: 6, day: 14, phase: 'full' },
-        lunitari: { year: 350, monthIndex: 6, day: 14, phase: 'full' },
-        nuitari: { year: 350, monthIndex: 6, day: 14, phase: 'full' },
-      },
-    });
-    const root = (globalThis as any).state[state_name];
-    assert(root.imported.krynnAnchor);
-    assertEquals(root.imported.krynnAnchor.day, 14);
-    assertEquals(root.imported.krynnAnchor.monthIndex, 6);
-    // Translated entries are stripped from lunarAnchors so PR 2c sees
-    // only one Dragonlance path.
-    assertEquals(Object.keys(root.imported.lunarAnchors).length, 0);
+    assertEquals(root.imported, undefined);
   });
 
   it('snapshots previous and new date labels in the result', () => {

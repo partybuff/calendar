@@ -7,8 +7,8 @@
 // the same canon-derived state.
 //
 // Phase math AND lore are engine-owned. `getPlanarState` delegates to
-// `@partybuff/calendar-engine/planes.stateOf`, threading
-// `state.imported.planarAnchors` through as `PlanePositions`, and sources
+// `@partybuff/calendar-engine/planes.stateOf`, passing `getPlanePositions()`
+// (always `{}` — canon-only per #198) as `PlanePositions`, and sources
 // the plane's `effects` and canonical `note` from the engine's returned
 // `Plane` (canonicalNote requires engine ≥0.39.0; undefined-safe on older).
 // So editing plane lore/mechanics in the engine auto-bumps to Roll20. The
@@ -16,7 +16,6 @@
 // metadata (name, title, color, orbit params, associatedMoon, seasonHint) —
 // NO lore text.
 import { enginePlanes, getPlanePositions, serialToCalendarDate } from './engine-opts.js';
-import { state_name } from './constants.js';
 import { ensureSettings, getCal, titleCase } from './state.js';
 import { fromSerial, toSerial, todaySerial } from './date-math.js';
 import { _monthRangeFromSerial, _renderSyntheticMiniCal, button, esc, handoutWrap } from './rendering.js';
@@ -136,23 +135,6 @@ export var PLANE_DATA = {
 };
 
 // ---------------------------------------------------------------------------
-// 21b) State management — minimal (subsystem toggle only)
-// ---------------------------------------------------------------------------
-
-export function getPlanesState(){
-  var root = state[state_name];
-  if (!root.planes) root.planes = {};
-  var ps = root.planes;
-  // Defensive empty containers so legacy callers (e.g. moon.ts off-cycle
-  // suppression checks) can still safely look up keys.
-  if (!ps.overrides) ps.overrides = {};
-  if (!ps.anchors) ps.anchors = {};
-  if (!ps.suppressedEvents) ps.suppressedEvents = {};
-  if (!ps.gmCustomEvents) ps.gmCustomEvents = {};
-  return ps;
-}
-
-// ---------------------------------------------------------------------------
 // 21c) Plane data lookups
 // ---------------------------------------------------------------------------
 
@@ -187,10 +169,10 @@ export function _planarYearDays(){
 // Returns { plane, phase, daysIntoPhase, daysUntilNextPhase, phaseDuration,
 //          nextPhase, note, sourceLabel } or null if the plane is unknown.
 // opts.ignoreGenerated is accepted for legacy callers and ignored.
-// Delegates to `@partybuff/calendar-engine/planes.stateOf`, threading
-// `state.imported.planarAnchors` through the engine's `positions`
-// argument. The wrapper-side `PLANE_DATA` table contributes the
-// display-only enrichment (`note`, `sourceLabel`) that the engine
+// Delegates to `@partybuff/calendar-engine/planes.stateOf`, passing the
+// engine's `positions` argument via `getPlanePositions()` (always `{}` —
+// canon-only per #198). The wrapper-side `PLANE_DATA` table contributes
+// the display-only enrichment (`note`, `sourceLabel`) that the engine
 // doesn't carry.
 export function getPlanarState(planeName, serial, _opts?){
   var plane = _getPlaneData(planeName);

@@ -193,7 +193,6 @@ function completeSetup(bundle) {
   assert(root, 'checkInstall should initialize persistent state.');
   root.setup = root.setup || {};
   root.setup.status = 'complete';
-  root.setup.draft = {};
 
   const settings = bundle._test.ensureSettings();
   settings.moonsEnabled = true;

@@ -4,38 +4,31 @@
 // (`@partybuff/party-buff`) emits a base64-encoded JSON payload via a
 // "Copy configuration token" affordance in its calendar settings; the
 // GM pastes it into Roll20 with `!cal token <paste>` to apply the
-// same world / date / variant / palette / lunar anchors / planar
-// anchors to a running session.
+// same world / date / variant / palette to a running session.
 //
 // The token carries setup only — never campaign content. Custom
 // events, notes, weather, and forecast gating stay on the web. See
 // ENGINE_CONTRACT.md §10 for the full wire format and validation
 // rules.
 //
-// PR 1 scope (this file): decode + validate + apply to the existing
-// `state.PartyBuffCalendar` shape. World, date, variant and palette
-// are applied via the existing helpers (`applyCalendarSystem`,
-// `setDate`, `ensureSettings`). Lunar and planar anchors are persisted
-// into a dedicated `imported` slot so the next PR (engine consumption)
-// can pass them through to the engine without losing data. They have
-// no visible effect yet — that lands when moon.ts and planes.ts
-// switch to engine calls.
+// Decode + validate + apply to the existing `state.PartyBuffCalendar`
+// shape. World, date, variant and palette are applied via the existing
+// helpers (`applyCalendarSystem`, `setDate`, `ensureSettings`).
+//
+// Per PR #198, moons and planes are canon-only — `getMoonOpts()` and
+// `getPlanePositions()` always return `{}` — so a token's lunar/krynn/
+// planar anchor fields can never affect what players see. Rather than
+// validate and persist inert data, this wrapper doesn't parse those
+// fields at all: a token carries world/date/variant/palette only. Any
+// `lunarAnchors` / `krynnAnchor` / `planarAnchors` on an incoming
+// payload are silently ignored (not validated, not stored).
 
 import { CALENDAR_SYSTEMS } from './config.js';
-import { state_name } from './constants.js';
 import { cleanWho, whisper, whisperUi } from './messaging.js';
 import { applyCalendarSystem, ensureSettings, getCal } from './state.js';
 import { _menuBox, currentDateLabel, setDate } from './ui.js';
 import { esc } from './rendering.js';
 import { resolveWorldKey } from './worlds/index.js';
-
-interface MoonAnchor {
-  year: number;
-  monthIndex: number;
-  day: number;
-  phase: 'full' | 'new';
-  hour?: number;
-}
 
 type CalendarDateMonth = { kind: 'month'; year: number; monthIndex: number; day: number };
 type CalendarDateIntercalary = { kind: 'intercalary'; year: number; intercalaryKey: string; day: number };
@@ -47,18 +40,7 @@ interface Token {
   date: CalendarDate;
   variant?: string;
   palette?: string;
-  lunarAnchors?: Record<string, MoonAnchor>;
-  krynnAnchor?: CalendarDateMonth;
-  planarAnchors?: Record<string, number>;
 }
-
-/** Krynn moons are anchored as a triad on Night of the Eye, never
- *  individually — see ENGINE_CONTRACT.md §5.3. The token's
- *  `krynnAnchor` field is the canonical Dragonlance shape; this set
- *  identifies which `lunarAnchors` keys belong to that triad so we can
- *  translate legacy producer tokens (which triplicated the same
- *  conjunction across all three keys) into the canonical shape. */
-const KRYNN_MOON_KEYS: ReadonlySet<string> = new Set(['solinari', 'lunitari', 'nuitari']);
 
 export const TOKEN_SCHEMA_VERSION = 1;
 
@@ -172,116 +154,12 @@ export function parseToken(raw: string): ParseResult {
     return { ok: false, error: 'Token palette must be a string.' };
   }
 
-  // lunarAnchors — optional record of {year, monthIndex, day, phase}
-  if (p.lunarAnchors !== undefined) {
-    if (!p.lunarAnchors || typeof p.lunarAnchors !== 'object') {
-      return { ok: false, error: 'Token lunarAnchors must be an object.' };
-    }
-    for (const [moonKey, entry] of Object.entries(p.lunarAnchors as Record<string, unknown>)) {
-      if (!moonKey) return { ok: false, error: 'lunarAnchors has an empty moon key.' };
-      if (!entry || typeof entry !== 'object') {
-        return { ok: false, error: `lunarAnchors.${moonKey} is not an object.` };
-      }
-      const a = entry as Record<string, unknown>;
-      if (a.phase !== 'full' && a.phase !== 'new') {
-        return { ok: false, error: `lunarAnchors.${moonKey}.phase must be 'full' or 'new'.` };
-      }
-      if (typeof a.year !== 'number' || !Number.isInteger(a.year)) {
-        return { ok: false, error: `lunarAnchors.${moonKey}.year must be an integer.` };
-      }
-      if (typeof a.monthIndex !== 'number' || !Number.isInteger(a.monthIndex) || a.monthIndex < 0) {
-        return { ok: false, error: `lunarAnchors.${moonKey}.monthIndex must be a non-negative integer.` };
-      }
-      if (typeof a.day !== 'number' || !Number.isInteger(a.day) || a.day < 1) {
-        return { ok: false, error: `lunarAnchors.${moonKey}.day must be a positive integer.` };
-      }
-      if (a.hour !== undefined && (typeof a.hour !== 'number' || !Number.isInteger(a.hour))) {
-        return { ok: false, error: `lunarAnchors.${moonKey}.hour must be an integer.` };
-      }
-    }
-  }
-
-  // krynnAnchor — Dragonlance only; the triad slides as one event, so a
-  // single calendar date pins all three Krynn moons to full.
-  if (p.krynnAnchor !== undefined) {
-    if (p.world !== 'dragonlance') {
-      return { ok: false, error: 'krynnAnchor is only valid for Dragonlance tokens.' };
-    }
-    const k = p.krynnAnchor as Record<string, unknown>;
-    if (!k || typeof k !== 'object') {
-      return { ok: false, error: 'krynnAnchor must be an object.' };
-    }
-    if (k.kind !== 'month') {
-      return { ok: false, error: 'krynnAnchor must be a month-kind calendar date.' };
-    }
-    if (typeof k.year !== 'number' || !Number.isInteger(k.year)) {
-      return { ok: false, error: 'krynnAnchor.year must be an integer.' };
-    }
-    if (typeof k.monthIndex !== 'number' || !Number.isInteger(k.monthIndex) || k.monthIndex < 0) {
-      return { ok: false, error: 'krynnAnchor.monthIndex must be a non-negative integer.' };
-    }
-    if (typeof k.day !== 'number' || !Number.isInteger(k.day) || k.day < 1) {
-      return { ok: false, error: 'krynnAnchor.day must be a positive integer.' };
-    }
-  }
-
-  // Dragonlance-specific lunarAnchors constraint. Per ENGINE_CONTRACT.md
-  // §5.3, Krynn moons cannot be anchored individually — Solinari,
-  // Lunitari, and Nuitari only conjunct on Night of the Eye. Two
-  // forms of bad input get rejected here, plus one form gets accepted
-  // for backward-compat with legacy web producers:
-  //   - any non-Krynn moon key in lunarAnchors on a Dragonlance token
-  //     (Dragonlance has no other moons in canon) → reject;
-  //   - Krynn keys in lunarAnchors that disagree on date or phase
-  //     (a non-canonical de-synced triad) → reject;
-  //   - both `krynnAnchor` and `lunarAnchors` present on the same
-  //     Dragonlance token (ambiguous intent) → reject;
-  //   - Krynn keys in lunarAnchors that all agree on the same date+phase
-  //     (legacy producers triplicated the conjunction across all three)
-  //     → accepted; applyToken translates to krynnAnchor on persistence.
-  if (p.world === 'dragonlance' && p.lunarAnchors) {
-    const entries = Object.entries(p.lunarAnchors as Record<string, MoonAnchor>);
-    if (entries.length > 0 && p.krynnAnchor !== undefined) {
-      return { ok: false, error: 'Dragonlance tokens accept either krynnAnchor or lunarAnchors, not both.' };
-    }
-    for (const [moonKey] of entries) {
-      if (!KRYNN_MOON_KEYS.has(moonKey)) {
-        return { ok: false, error: `Dragonlance has no moon "${moonKey}" — Krynn anchors must use solinari, lunitari, or nuitari (or pass krynnAnchor).` };
-      }
-    }
-    if (entries.length > 0) {
-      const first = entries[0]![1];
-      for (const [moonKey, anchor] of entries) {
-        if (
-          anchor.year !== first.year ||
-          anchor.monthIndex !== first.monthIndex ||
-          anchor.day !== first.day ||
-          anchor.phase !== first.phase
-        ) {
-          return { ok: false, error: `Krynn moons must share a single conjunction date and phase; lunarAnchors.${moonKey} disagrees with the triad. Use krynnAnchor for new producers.` };
-        }
-      }
-    }
-  }
-
-  // planarAnchors — optional record of integer offsets. Planes are
-  // Eberron-only; non-Eberron tokens with a non-empty planarAnchors
-  // are rejected per §10.2.9.
-  if (p.planarAnchors !== undefined) {
-    if (!p.planarAnchors || typeof p.planarAnchors !== 'object') {
-      return { ok: false, error: 'Token planarAnchors must be an object.' };
-    }
-    const planarEntries = Object.entries(p.planarAnchors as Record<string, unknown>);
-    if (planarEntries.length > 0 && p.world !== 'eberron') {
-      return { ok: false, error: 'planarAnchors is only valid for Eberron tokens.' };
-    }
-    for (const [planeKey, value] of planarEntries) {
-      if (!planeKey) return { ok: false, error: 'planarAnchors has an empty plane key.' };
-      if (typeof value !== 'number' || !Number.isInteger(value)) {
-        return { ok: false, error: `planarAnchors.${planeKey} must be an integer day offset.` };
-      }
-    }
-  }
+  // `lunarAnchors` / `krynnAnchor` / `planarAnchors` are NOT validated or
+  // read here. Per #198, moons and planes are canon-only — the engine
+  // opts bags (`getMoonOpts()` / `getPlanePositions()`) always return
+  // `{}` — so those fields, even if a producer still sends them, can
+  // never affect what players see. A token carries world/date/variant/
+  // palette only.
 
   return { ok: true, token: payload as Token };
 }
@@ -294,16 +172,10 @@ export type ApplyResult =
  *  previous current-date label first so the §10.3 confirmation can
  *  point the GM at it if they want to set it back.
  *
- *  Anchors (lunar + planar) land in `state.PartyBuffCalendar.imported`.
- *  PR 2 wires them into the engine moon/plane queries via the new
- *  `anchors?` / `positions?` parameters; until then they're persisted
- *  but inert. The dedicated slot keeps them outside the legacy
- *  `state.moons` / `state.planes` blobs so the migration is clean.
- *
  *  World resolution failure or an `applyCalendarSystem` rejection both
  *  fail the whole apply with no partial writes — the resolution check
  *  runs before any state read/write, and `applyCalendarSystem`'s result
- *  is checked before settings/date/anchors are touched. */
+ *  is checked before settings/date are touched. */
 export function applyToken(token: Token): ApplyResult {
   // World. Accepts either the wrapper registry key or the engine WorldId
   // (see worlds/index.ts::resolveWorldKey) — resolve to the wrapper key
@@ -368,55 +240,11 @@ export function applyToken(token: Token): ApplyResult {
     // can `!cal set` the date manually if they prefer.
   }
 
-  // Anchors. Store under a dedicated `imported` slot — PR 2 reads from
-  // here when wiring engine calls. We persist even when empty so the
-  // slot's presence signals "this campaign was token-configured."
-  //
-  // Dragonlance normalization: legacy producer tokens triplicated the
-  // Night of the Eye conjunction across `lunarAnchors.solinari` /
-  // `.lunitari` / `.nuitari`; parse-time validation guarantees the
-  // triad agrees on date+phase if present. Translate that legacy
-  // shape into the canonical `krynnAnchor` for storage, so the engine-
-  // wiring PR (PR 2c) only has one Dragonlance code path to support.
-  let lunarAnchors: Record<string, MoonAnchor> = token.lunarAnchors ?? {};
-  let krynnAnchor: CalendarDateMonth | undefined = token.krynnAnchor;
-  if (sysKey === 'dragonlance') {
-    if (!krynnAnchor && token.lunarAnchors) {
-      const krynnEntries = Object.entries(token.lunarAnchors).filter(([k]) =>
-        KRYNN_MOON_KEYS.has(k),
-      );
-      if (krynnEntries.length > 0) {
-        const a = krynnEntries[0]![1];
-        if (a.phase === 'full') {
-          krynnAnchor = { kind: 'month', year: a.year, monthIndex: a.monthIndex, day: a.day };
-        }
-        // A 'new'-phase legacy triad has no krynnAnchor equivalent
-        // (Night of the Eye is canonically a triple-full conjunction);
-        // the entries stay in lunarAnchors for the engine to consume
-        // via the per-moon fallback path in PR 2c.
-      }
-    }
-    // Strip Krynn entries from lunarAnchors when a krynnAnchor exists
-    // — the canonical shape carries one or the other for Dragonlance,
-    // never both.
-    if (krynnAnchor) {
-      lunarAnchors = Object.fromEntries(
-        Object.entries(lunarAnchors).filter(([k]) => !KRYNN_MOON_KEYS.has(k)),
-      );
-    }
-  }
-
-  const root = (state as { [key: string]: unknown })[state_name] as Record<
-    string,
-    unknown
-  >;
-  root.imported = {
-    lunarAnchors,
-    krynnAnchor: krynnAnchor ?? null,
-    planarAnchors: token.planarAnchors ?? {},
-    appliedAt: Date.now(),
-    schemaVersion: token.v,
-  };
+  // No anchor persistence. Moons and planes are canon-only (#198) — a
+  // token no longer carries lunar/krynn/planar anchors at all, so there
+  // is nothing to store. `state.PartyBuffCalendar.imported` is retired;
+  // see `_sweepLegacyStateSlots` in state.ts for the cleanup of any
+  // already-persisted copies from older campaigns.
 
   const newDateLabel = currentDateLabel();
   return {

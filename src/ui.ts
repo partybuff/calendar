@@ -8,7 +8,7 @@ import { DaySpec, Parse, monthIndexByName } from './parsing.js';
 import { _addConcreteEvent, buildCalendarsHtmlForSpec, defaultKeyFor, eventDisplayName, eventIndexByKey, markSuppressedIfDefault, occurrencesInRange } from './events.js';
 import { _dateLabelFragment, _decKey, _eventSeriesKey, button, clamp, esc, formatDateLabel, int, mbP, monthEventsHtml, navP, swatchHtml } from './rendering.js';
 import { send, sendToAll, sendToGM, sendUiToGM, warnGM, whisper, whisperUi } from './commands.js';
-import { MOON_HISTORY_DAYS, _getMoonSys, _moonNextThresholdEntry, _moonPeakPhaseDay, _moonPhaseEmoji, _moonPhaseSpanSuffix, captureMoonHistoryWindow, moonEnsureSequences, moonPhaseAt, pruneMoonHistory, resetMoonHistory } from './moon.js';
+import { _getMoonSys, _moonNextThresholdEntry, _moonPeakPhaseDay, _moonPhaseEmoji, _moonPhaseSpanSuffix, moonEnsureSequences, moonPhaseAt } from './moon.js';
 import { PLANE_PHASE_EMOJI, PLANE_PHASE_LABELS, _getAllPlaneData, _isGeneratedNote, _planarNotableToday, _planarYearDays, getPlanarState } from './planes.js';
 import { dateFormatFor } from './worlds/index.js';
 
@@ -444,14 +444,6 @@ export function stepDays(n, opts?){
   var d = fromSerial(dest);
   cur.day_of_the_week = (cur.day_of_the_week + ((n % wdlen) + wdlen)) % wdlen;
   cur.year = d.year; cur.month = d.mi; cur.day_of_the_month = d.day;
-  if (ensureSettings().moonsEnabled !== false){
-    if (n > 0){
-      captureMoonHistoryWindow(Math.max(startSerial, dest - (MOON_HISTORY_DAYS - 1)), dest);
-      pruneMoonHistory(dest);
-    } else if (n < 0){
-      pruneMoonHistory(dest);
-    }
-  }
   if (opts.announce === false) return;
   sendCurrentDate(null, true, { dashboard:true, includeButtons:true });
 }
@@ -468,9 +460,6 @@ export function setDate(m, d, y, opts?){
   cur.month = mi; cur.day_of_the_month = di; cur.year = yi;
   var wdlen = cal.weekdays.length;
   cur.day_of_the_week = (oldDOW + ((delta % wdlen) + wdlen)) % wdlen;
-  if (ensureSettings().moonsEnabled !== false){
-    resetMoonHistory(nextSerial, true);
-  }
   if (opts.announce === false) return;
   sendCurrentDate(null, true);
 }
