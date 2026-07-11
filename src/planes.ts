@@ -20,7 +20,7 @@ import { state_name } from './constants.js';
 import { ensureSettings, getCal, titleCase } from './state.js';
 import { fromSerial, toSerial, todaySerial } from './date-math.js';
 import { _monthRangeFromSerial, _renderSyntheticMiniCal, button, esc, handoutWrap } from './rendering.js';
-import { _deliverAdditionalCalendarRange, _deliverTopLevelCalendarRange, buildAdditionalRangesCommand } from './events.js';
+import { _chunkMonthsForDelivery, _deliverAdditionalCalendarRange, _deliverTopLevelCalendarRange, buildAdditionalRangesCommand } from './events.js';
 import { _displayModeLabel, _legendLine, _menuBox, _normalizeDisplayMode, _serialToDateSpec, _shiftSerialByMonth, dateLabelFromSerial, formalDateLabelFromSerial, parseDatePrefixForAdd } from './ui.js';
 import { sendToAll, warnGM, whisper, whisperParts } from './commands.js';
 
@@ -686,25 +686,41 @@ export function planesPanelHtml(isGM, serialOverride?){
   return parts;
 }
 
+function _planesMonthCellHtml(wm){
+  var month = getCal().months[wm.mi] || {};
+  var start = toSerial(wm.y, wm.mi, 1);
+  var end = toSerial(wm.y, wm.mi, month.days|0);
+  var events = _planesMiniCalEvents(start, end);
+  var bars = _planesHeaderBars(start, end);
+  var miniCal = _renderSyntheticMiniCal(null, start, end, events, bars);
+  return '<div style="display:inline-block;vertical-align:top;margin:4px;overflow:visible;">' + miniCal + '</div>';
+}
+
+// Returns a single HTML string for small ranges, or an ARRAY of HTML parts
+// (one per month group) for year-scale ranges — see
+// events.ts _chunkMonthsForDelivery / CALENDAR_RANGE_MAX_MONTHS_PER_MESSAGE.
+// A full 12-month year rendered in one message runs ~300KB, well past
+// Roll20's practical chat message size limit; _deliverAdditionalCalendarRange
+// delivers array results as separate sequential sendChat calls.
 function _planesRangeHtml(spec, _isGM){
   var months = spec.months || [];
-  var calParts = [];
+  var chunks = _chunkMonthsForDelivery(months);
+  var title = '🌀 Planes — ' + esc(spec.title || 'Range');
+  var legend = _legendLine(['Cell fill = short event', 'Hatched = remote']);
 
-  for (var i = 0; i < months.length; i++){
-    var wm = months[i];
-    var month = getCal().months[wm.mi] || {};
-    var start = toSerial(wm.y, wm.mi, 1);
-    var end = toSerial(wm.y, wm.mi, month.days|0);
-    var events = _planesMiniCalEvents(start, end);
-    var bars = _planesHeaderBars(start, end);
-    var miniCal = _renderSyntheticMiniCal(null, start, end, events, bars);
-    calParts.push('<div style="display:inline-block;vertical-align:top;margin:4px;overflow:visible;">' + miniCal + '</div>');
+  if (chunks.length <= 1){
+    var calParts = months.map(_planesMonthCellHtml);
+    var body = handoutWrap(calParts.join('')) + legend;
+    return _menuBox(title, body);
   }
 
-  var body = handoutWrap(calParts.join('')) +
-    _legendLine(['Cell fill = short event', 'Hatched = remote']);
-
-  return _menuBox('🌀 Planes — ' + esc(spec.title || 'Range'), body);
+  var parts = [];
+  for (var i = 0; i < chunks.length; i++){
+    var chunkParts = chunks[i].map(_planesMonthCellHtml);
+    var chunkBody = handoutWrap(chunkParts.join('')) + legend;
+    parts.push(_menuBox(title + ' (' + (i + 1) + '/' + chunks.length + ')', chunkBody));
+  }
+  return parts;
 }
 
 function _planesBroadcastSummaryHtml(serialOverride?){

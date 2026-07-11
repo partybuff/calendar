@@ -24,10 +24,61 @@ describe("Planes canon", () => {
 
   it("recognises Mabar's annual Long Shadows and its 5-year remote window separately", () => {
     freshInstall();
-    const vult28 = getPlanarState("Mabar", toSerial(998, 11, 28));
-    const zarantyr1 = getPlanarState("Mabar", toSerial(999, 0, 1));
-    assert(vult28 && vult28.phase === "coterminous", "Vult 28 falls within Long Shadows");
-    assert(zarantyr1 && zarantyr1.phase !== "coterminous", "Long Shadows should end with the calendar year");
+
+    // Derive Mabar's annual coterminous ("Long Shadows") window for year 998
+    // from the engine instead of hardcoding a date. Engine 0.44 retired the
+    // fixed Vult 26-28 dates: the window now floats on the new moon nearest
+    // the winter solstice (Vult 21), so a hardcoded day would drift out of
+    // the window on future canon changes.
+    const vultScanStart = toSerial(998, 11, 1) - 10;
+    const vultScanEnd = toSerial(998, 11, 28) + 10;
+    let cotermStart: number | null = null;
+    let cotermEnd: number | null = null;
+    for (let s = vultScanStart; s <= vultScanEnd; s++) {
+      const ps = getPlanarState("Mabar", s);
+      if (ps && ps.phase === "coterminous") {
+        if (cotermStart == null) cotermStart = s;
+        cotermEnd = s;
+      }
+    }
+    assert(cotermStart != null && cotermEnd != null,
+      "expected to find Mabar's annual Long Shadows window near Vult 998");
+
+    const insideLongShadows = getPlanarState("Mabar", cotermStart!);
+    assert(insideLongShadows && insideLongShadows.phase === "coterminous",
+      "a day inside the derived window falls within Long Shadows");
+    const dayAfterWindow = getPlanarState("Mabar", cotermEnd! + 1);
+    assert(dayAfterWindow && dayAfterWindow.phase !== "coterminous",
+      "Long Shadows should end right after its derived window");
+    const midYear = getPlanarState("Mabar", toSerial(998, 5, 15)); // Nymm — opposite side of the year
+    assert(midYear && midYear.phase !== "coterminous",
+      "Mabar should not be coterminous mid-year, far from the Long Shadows window");
+
+    // The rarer 5-year remote is a SEPARATE phenomenon from the annual
+    // coterminous above: it floats on the full moon nearest the summer
+    // solstice (Nymm 21) and first fires in year 999 (anchor year + 1).
+    // Derive that window too and confirm it reports 'remote' — distinct
+    // from, and not confused with, the annual Long Shadows coterminous.
+    const nymmScanStart = toSerial(999, 5, 1) - 10;
+    const nymmScanEnd = toSerial(999, 5, 28) + 10;
+    let remoteStart: number | null = null;
+    let remoteEnd: number | null = null;
+    for (let s = nymmScanStart; s <= nymmScanEnd; s++) {
+      const ps = getPlanarState("Mabar", s);
+      if (ps && ps.phase === "remote") {
+        if (remoteStart == null) remoteStart = s;
+        remoteEnd = s;
+      }
+    }
+    assert(remoteStart != null && remoteEnd != null,
+      "expected to find Mabar's 5-year remote window near Nymm 999");
+
+    const insideRemote = getPlanarState("Mabar", remoteStart!);
+    assert(insideRemote && insideRemote.phase === "remote",
+      "a day inside the derived remote window falls within the 5-year remote, not Long Shadows");
+    const beforeRemote = getPlanarState("Mabar", remoteStart! - 5);
+    assert(beforeRemote && beforeRemote.phase === "neutral",
+      "Mabar should be neutral just before the rare remote window opens");
   });
 
   it("emits mini-calendar fills for any active short canon phases in range", () => {

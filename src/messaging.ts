@@ -40,5 +40,15 @@ export function whisperParts(to, parts){
     if (parts[i]) whisper(to, parts[i]);
   }
 }
+// Broadcast counterpart to whisperParts — used for year-scale ranges chunked
+// into one message per month group so no single sendChat blows past Roll20's
+// practical message size limit. Roll20 delivers sequential sendChat calls in
+// the order issued, so no explicit sequencing/throttling is needed here.
+export function sendToAllParts(parts){
+  if (!Array.isArray(parts)) parts = [parts];
+  for (var i = 0; i < parts.length; i++){
+    if (parts[i]) sendToAll(parts[i]);
+  }
+}
 export function warnGM(msg){ sendChat(script_name, '/w gm ' + msg, null, { noarchive: true }); }
 export function warnGMUi(msg){ sendChat(script_name, '/w gm ' + msg, null, { noarchive: true }); }

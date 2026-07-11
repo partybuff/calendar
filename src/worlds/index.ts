@@ -313,6 +313,23 @@ export function getEngineId(wrapperKey: string): EngineWorldId | null {
   return ov ? ov.engineId : null;
 }
 
+/** Resolve an external world identifier — either a wrapper registry key
+ *  (e.g. 'faerunian') or the underlying engine WorldId (e.g. 'faerun') — to
+ *  the wrapper key. Built directly off the `OVERLAYS` registry so callers
+ *  (the `!cal token` importer) never need a second hardcoded world list;
+ *  adding an overlay (e.g. Barovia) automatically makes it resolvable.
+ *  Case-insensitive. Returns null when `id` matches neither a wrapper key
+ *  nor a known engineId. */
+export function resolveWorldKey(id: string): string | null {
+  const needle = String(id || '').toLowerCase();
+  if (!needle) return null;
+  if (OVERLAYS[needle]) return needle;
+  for (const key of OVERLAY_ORDER) {
+    if (String(OVERLAYS[key]!.engineId).toLowerCase() === needle) return key;
+  }
+  return null;
+}
+
 /** Engine holiday `description` for an event by its display label, in the
  *  given wrapper world (case-insensitive). Read live from engine
  *  `world.holidays`, so editing lore in the engine auto-bumps to Roll20 —
