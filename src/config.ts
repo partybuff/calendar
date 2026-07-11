@@ -50,12 +50,9 @@ export var CONFIG_DEFAULTS: Record<string, any> = {
   seasonVariant:     'eberron',
   hemisphere:        'north',
   colorTheme:        null,
-  eventsEnabled:     true,
   moonsEnabled:      true,
   planesEnabled:     true,
-  offCyclePlanes:    true,
   planesDisplayMode: 'calendar',
-  subsystemVerbosity:'normal',
   uiDensity:         'normal',
   autoButtons:       false,
 };

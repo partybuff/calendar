@@ -113,6 +113,23 @@ export function _getSeasonLabel(mi, day){
   return best || (tr.length ? tr[tr.length - 1].season : null);
 }
 
+// Whether flipping hemisphere actually changes the ACTIVE world's displayed
+// seasons in the wrapper. True only for season sets the wrapper can mirror:
+// name-shift sets (Faerûn) and transition sets with a southern array
+// (Gregorian) — both carry `hemisphereAware`, and verified to be the only two
+// worlds where the displayed label flips N/S. Gates the Hemisphere control so
+// it never appears where it would be a no-op. NB: the engine's own
+// `seasons.hemisphereAware` also reports Exandria/Mystara true (it ships
+// southern tables for them), but the wrapper can't shift those yet — so gate
+// on the wrapper's own capability here, not the engine's. When the seasons
+// reinstatement moves rendering onto engine `seasons.at`, this gate moves with
+// it and Exandria/Mystara light up correctly.
+export function _hemisphereAffectsActiveWorld(){
+  var sv = ensureSettings().seasonVariant || CONFIG_DEFAULTS.seasonVariant;
+  var entry = SEASON_SETS[sv] || {};
+  return !!entry.hemisphereAware;
+}
+
 export function _uiDensityValue(explicit){
   var d = String(explicit || ensureSettings().uiDensity || CONFIG_DEFAULTS.uiDensity || 'compact').toLowerCase();
   return (d === 'normal') ? 'normal' : 'compact';
@@ -129,15 +146,6 @@ export function _displayModeLabel(mode){
   if (m === 'calendar') return 'Calendar';
   if (m === 'list') return 'List';
   return 'Both';
-}
-
-export function _subsystemVerbosityValue(){
-  var v = String(ensureSettings().subsystemVerbosity || CONFIG_DEFAULTS.subsystemVerbosity || 'normal').toLowerCase();
-  return (v === 'minimal') ? 'minimal' : 'normal';
-}
-
-export function _subsystemIsVerbose(){
-  return _subsystemVerbosityValue() !== 'minimal';
 }
 
 export function _legendLine(items){
@@ -625,7 +633,9 @@ export function additionalHubHtml(){
 // GM Settings panel — self-describing flip grid. Dropdowns pick a value;
 // each toggle button shows its CURRENT state and emits the OPPOSITE, so one
 // click = one flip. `offcycle` is intentionally absent (off-cycle planar
-// generation is out of scope). Planes rows show only on Eberron.
+// generation is out of scope). Events has no toggle — it's core canon
+// content, not an optional subsystem. There is no Detail/verbosity picker;
+// it had no reader. Planes rows show only on Eberron.
 export function settingsPanelHtml(){
   var st = ensureSettings();
   var isEberron = String(st.calendarSystem || '') === 'eberron';
@@ -633,12 +643,10 @@ export function settingsPanelHtml(){
     return button(label + ': ' + (isOn ? 'ON' : 'OFF'), 'settings ' + key + ' ' + (isOn ? 'off' : 'on'));
   }
   var choose = '<div style="margin:3px 0;">' +
-    button('Density: ' + titleCase(_uiDensityValue('')), 'settings density ?{Density|Compact,compact|Normal,normal}') + ' ' +
-    button('Detail: ' + titleCase(_subsystemVerbosityValue()), 'settings verbosity ?{Detail|Normal,normal|Minimal,minimal}') +
+    button('Density: ' + titleCase(_uiDensityValue('')), 'settings density ?{Density|Compact,compact|Normal,normal}') +
     (isEberron ? ' ' + button('Planes View: ' + _displayModeLabel(st.planesDisplayMode), 'settings mode planes ?{Planes view|Calendar,calendar|List,list|Both,both}') : '') +
     '</div>';
   var toggles = '<div style="margin:3px 0;">' +
-    toggle('events', 'Events', st.eventsEnabled !== false) + ' ' +
     toggle('moons', 'Moons', st.moonsEnabled !== false) + ' ' +
     (isEberron ? toggle('planes', 'Planes', st.planesEnabled !== false) + ' ' : '') +
     toggle('group', 'Group by source', !!st.groupEventsBySource) + ' ' +
@@ -658,13 +666,19 @@ export function manageHubHtml(){
   var todaySpec = _serialToDateSpec(todaySerial());
   var head = '<div style="font-size:.8em;opacity:.7;margin:2px 0;">Configuration &amp; publishing — GM only.</div>';
   function grp(label){ return '<div style="margin:6px 0 2px;font-size:.78em;letter-spacing:.04em;text-transform:uppercase;opacity:.6;">' + label + '</div>'; }
+  // Hemisphere only does anything on worlds whose displayed season labels
+  // actually vary by hemisphere in the wrapper — hide the control entirely
+  // elsewhere rather than offer a button that always no-ops.
+  var isHemisphereAware = _hemisphereAffectsActiveWorld();
   var rows = head +
     grp('World &amp; date') +
     '<div style="margin:2px 0;">' + button('Set Date', 'set ?{Set Date (mm dd yyyy)|' + todaySpec + '}') + ' ' + button('Calendar / Variant', 'calendar list') + '</div>' +
     grp('Display') +
     '<div style="margin:2px 0;">' + button('Settings', 'settings') + ' ' + button('Sources', 'source list') + '</div>' +
     grp('Look &amp; region') +
-    '<div style="margin:2px 0;">' + button('Themes', 'theme list') + ' ' + button('Hemisphere', 'hemisphere ?{Hemisphere|North,north|South,south|Status,status}') + '</div>' +
+    '<div style="margin:2px 0;">' + button('Themes', 'theme list') +
+      (isHemisphereAware ? ' ' + button('Hemisphere', 'hemisphere ?{Hemisphere|North,north|South,south|Status,status}') : '') +
+      '</div>' +
     grp('Publish') +
     '<div style="margin:2px 0;">' + button('Broadcast Today', 'send') + ' ' + button('Broadcast Range', 'send ?{Range|This Month,month|This Year,year|Next Month,next month|Today,today}') + '</div>' +
     grp('Danger') +
@@ -738,20 +752,36 @@ export function helpThemesMenu(m){
   whisperUi(m.who, _menuBox(ro ? 'Appearance — Themes (view only)' : 'Appearance — Themes', themeListHtml(ro)));
 }
 
-export function helpCalendarSystemMenu(m){
-  var ro = !playerIsGM(m.playerid);
-  whisperUi(m.who,
-    _menuBox(ro ? 'Name Variants (view only)' : 'Name Variants', calendarSystemListHtml(ro))
-  );
+// The button labeled "Reading the Calendar" (help root → Reference) routes
+// to `!cal help calendar`, which used to show this Name Variants picker —
+// a mismatch (players expect a guide to the grid, not a month-name swap
+// tool). Name Variants is still reachable, just not from Help: it's the
+// Calendar/Variant button on the GM Manage hub (`!cal calendar list`).
+export function helpReadingMenu(m){
+  var body = [
+    '<div style="margin:2px 0;"><b>The grid.</b> Today&#39;s cell gets a raised highlight ',
+    '(bold, drop shadow) so it stands out at a glance. A day with an event fills its whole ',
+    'cell in that event&#39;s color; additional events on the same day show as small dots ',
+    'under the date instead. The month header takes its color from the active theme ',
+    '(Manage &rarr; Themes); the era suffix after the year (e.g. &quot;998 YK&quot;) follows ',
+    'the active world.</div>',
+    '<div style="margin:8px 0 2px 0;"><b>Moving around.</b> <code>&lsaquo; Prev</code> / ',
+    '<code>Next &rsaquo;</code> walk one month at a time; <code>This Month</code> snaps back ',
+    'to today&#39;s month; <code>Year</code> opens the full-year view.</div>',
+    '<div style="margin:8px 0 2px 0;"><b>Talking to it.</b> <code>!cal</code> always whispers ',
+    'its reply to you — nothing you see is visible to the table until the GM runs ',
+    '<code>!cal send</code>, which posts the current date publicly.</div>'
+  ].join('');
+  whisperUi(m.who, _menuBox('Reading the Calendar', body));
 }
 
 export function helpEventColorsMenu(m){
   var intro = [
     '<div style="opacity:.85;margin-bottom:6px;">',
-    'These are the available <b>named colors for events</b>. ',
-    'Any hex (<code>#RRGGBB</code>) is supported, but these names can be used directly. ',
-    'Example: <code>!cal add March 14 Feast emerald</code> or ',
-    '<code>!cal add 3 14 Feast #50C878</code>.',
+    'Every event on the calendar carries a color: canon events use the color their source data ',
+    'defines, and any without one get a stable color auto-assigned from their name, so the same ',
+    'event always renders the same way. These are the named colors that can show up — each maps ',
+    'to a hex value (<code>#RRGGBB</code>).',
     '</div>'
   ].join('');
   whisperUi(m.who,

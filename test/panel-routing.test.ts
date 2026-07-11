@@ -45,6 +45,37 @@ describe("Redesigned panel routing", () => {
     assert(!msg.includes("events list"));
   });
 
+  it("gates the Events panel's Send-to-Players button to the GM (players would only hit the GM-only error)", () => {
+    freshInstall();
+    completeSetup();
+
+    // Player opens the same panel — everything renders except the Send
+    // button, which fires the GM-only `!cal send`.
+    handleInput({ type: "api", content: "!cal events panel", who: "Alyra (Player)", playerid: "player1" } as any);
+    const playerMsg = String(lastChat().msg);
+    assert(playerMsg.includes("Events"), "player still sees the events panel");
+    assert(playerMsg.includes("Additional Ranges"), "player still sees the rest of the panel");
+    assert(!playerMsg.includes("Send to Players"), "player must NOT see the GM-only Send button");
+
+    // GM opens it — the button is back.
+    handleInput(gmMessage("!cal events panel"));
+    assert(String(lastChat().msg).includes("Send to Players"), "GM still gets the Send button");
+  });
+
+  it("hints the live events subcommands, not the retired add/remove family", () => {
+    freshInstall();
+    completeSetup();
+
+    handleInput(gmMessage("!cal events bogus"));
+
+    const msg = String(lastChat().msg);
+    assert(msg.includes("Try: current | all"), "hint lists the live subcommands");
+    assert(!msg.includes("addmonthly"), "no addmonthly in the hint");
+    assert(!msg.includes("addyearly"), "no addyearly in the hint");
+    assert(!/Try:.*\bremove\b/.test(msg), "no remove in the hint");
+    assert(!/Try:.*\brestore\b/.test(msg), "no restore in the hint");
+  });
+
   it("keeps the Events send button aligned to the displayed month", () => {
     freshInstall();
     completeSetup();
@@ -206,6 +237,31 @@ describe("Planes routing", () => {
     assert(!log.includes("anchorwizard"), "no anchor wizard should remain");
     assert(!log.includes("seedinit"), "no seed wizard should remain");
     assert(log.includes("planes toggle"), "subsystem toggle should still be available to the GM");
+  });
+
+  it("retires the planes panel's Send to Players button \u2014 !cal send is the only public broadcast surface", () => {
+    freshInstall();
+
+    handlePlanesCommand(gmUser(), ["planes"]);
+
+    const log = (globalThis as any)._chatLog.map((entry: any) => String(entry.msg)).join("\n");
+    assert(!log.includes("planes send"), "no lingering 'planes send' button/command should remain in the panel");
+    assert(!log.includes("Send to Players"), "the planes panel must not offer its own public broadcast button");
+  });
+
+  it("!cal planes send no longer broadcasts \u2014 it produces zero /direct messages", () => {
+    freshInstall();
+
+    handlePlanesCommand(gmUser(), ["planes", "send"]);
+
+    const broadcasts = (globalThis as any)._chatLog.filter((entry: any) => String(entry.msg).startsWith("/direct "));
+    assertEquals(broadcasts.length, 0, "!cal planes send must not broadcast publicly; !cal send is the only public broadcast surface");
+
+    // Falls through to the ordinary whispered subcommand summary instead of
+    // erroring or broadcasting \u2014 same shape as any other unrecognized sub.
+    const msg = String(lastChat().msg);
+    assert(msg.startsWith('/w "GM" '), "the response to a retired subcommand must still be a whisper");
+    assert(!msg.includes("!cal planes send"), "the whispered summary should no longer advertise the retired command");
   });
 
   it("renders plane Additional Ranges against the viewed date and resolves real range output", () => {

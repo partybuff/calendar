@@ -225,9 +225,7 @@ export function ensureSettings(){
       showSourceLabels:    false,
       uiDensity:           CONFIG_DEFAULTS.uiDensity,
       autoButtons:         CONFIG_DEFAULTS.autoButtons,
-      eventsEnabled:       CONFIG_DEFAULTS.eventsEnabled,
       planesDisplayMode:   CONFIG_DEFAULTS.planesDisplayMode,
-      subsystemVerbosity:  CONFIG_DEFAULTS.subsystemVerbosity,
       eventSourcePriority: _defaultEventSourcePriorityForSystem(CONFIG_DEFAULTS.calendarSystem)
     };
   }
@@ -247,6 +245,14 @@ export function ensureSettings(){
     delete s.monthSet; delete s.weekdaySet; delete s.seasonSet;
     delete s.monthLengthSet; delete s.structureSet;
   }
+  // Retired settings cleanup: off-cycle planar generation, the events
+  // toggle, and the subsystem verbosity/"Detail" picker were all removed
+  // (out of scope per CLAUDE.md / no production reader). Strip the dead
+  // keys unconditionally so existing campaigns don't carry stale state
+  // forever — harmless no-op once a campaign has already been cleaned.
+  delete s.offCyclePlanes;
+  delete s.eventsEnabled;
+  delete s.subsystemVerbosity;
   // Migrate renamed season variants.
   var _svMig = s.seasonVariant;
   if (_svMig === 'northern'){
@@ -267,10 +273,8 @@ export function ensureSettings(){
   s.eventSourcePriority = _normalizeEventSourcePriority(s.eventSourcePriority, s.calendarSystem || CONFIG_DEFAULTS.calendarSystem);
   if (s.uiDensity !== 'compact' && s.uiDensity !== 'normal') s.uiDensity = CONFIG_DEFAULTS.uiDensity;
   if (s.autoButtons   === undefined) s.autoButtons   = CONFIG_DEFAULTS.autoButtons;
-  if (s.eventsEnabled  === undefined) s.eventsEnabled  = CONFIG_DEFAULTS.eventsEnabled;
   if (s.moonsEnabled   === undefined) s.moonsEnabled   = CONFIG_DEFAULTS.moonsEnabled;
   if (s.planesEnabled  === undefined) s.planesEnabled  = CONFIG_DEFAULTS.planesEnabled;
-  if (s.offCyclePlanes === undefined) s.offCyclePlanes = CONFIG_DEFAULTS.offCyclePlanes;
 
   // Auto-toggle subsystems based on world capabilities.
   // The GM can always override manually.
@@ -292,9 +296,6 @@ export function ensureSettings(){
   }
   if (!/^(calendar|list|both)$/.test(String(s.planesDisplayMode || '').toLowerCase()))
     s.planesDisplayMode = CONFIG_DEFAULTS.planesDisplayMode;
-  s.subsystemVerbosity = String(s.subsystemVerbosity || CONFIG_DEFAULTS.subsystemVerbosity).toLowerCase();
-  if (s.subsystemVerbosity !== 'minimal' && s.subsystemVerbosity !== 'normal')
-    s.subsystemVerbosity = CONFIG_DEFAULTS.subsystemVerbosity;
   return s;
 }
 

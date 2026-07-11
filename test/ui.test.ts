@@ -5,7 +5,7 @@ import { _showDefaultCalView } from "../src/commands.js";
 import { handleInput } from "../src/boot-register.js";
 import { setDate, stepDays } from "../src/ui.js";
 import { sendToAll, sendUiToGM } from "../src/messaging.js";
-import { helpRootMenu } from "../src/ui.js";
+import { helpEventColorsMenu, helpRootMenu } from "../src/ui.js";
 import { fromSerial, toSerial } from "../src/date-math.js";
 import { MOON_SYSTEMS, _moonNextThresholdEntry, _moonPeakPhaseDay, moonEnsureSequences } from "../src/moon.js";
 import { _getAllPlaneData, getPlanarState } from "../src/planes.js";
@@ -47,6 +47,45 @@ describe("Task-focused UI", () => {
     assert(!msg.msg.includes("Prompt !cal planes on"), "planes-on prompt gone");
     // Retired custom-event prompts stay gone.
     assert(!msg.msg.includes("Prompt !cal add"));
+  });
+
+  it("Event Colors help page explains colors without teaching the retired add command", () => {
+    freshInstall();
+    helpEventColorsMenu({ who: "GM (GM)", playerid: "GM" } as any);
+    const msg = String((globalThis as any)._chatLog.slice(-1)[0].msg);
+    assert(msg.includes("Event Colors"), "title");
+    assert(!msg.includes("!cal add"), "no retired add-event example");
+    assert(!/March 14 Feast/.test(msg), "no dead command example");
+    // The named-color reference table itself is still expected (e.g.
+    // "emerald" is a legitimate swatch entry) — only the retired-command
+    // example that used to reference it is gone.
+    assert(msg.includes("emerald"), "named-color table still lists its entries");
+    // Still explains what colors mean / where they come from.
+    assert(/color/i.test(msg), "still describes event colors");
+  });
+
+  it("Reading the Calendar help page explains the grid instead of the Name Variants picker", () => {
+    freshInstall();
+    completeSetup();
+    handleInput({ type: "api", content: "!cal help calendar", who: "GM (GM)", playerid: "GM" } as any);
+    const msg = String((globalThis as any)._chatLog.slice(-1)[0].msg);
+    assert(msg.includes("Reading the Calendar"), "title");
+    assert(/today/i.test(msg) && /highlight/i.test(msg), "explains the today highlight");
+    assert(/dot/i.test(msg), "explains event dots for secondary events");
+    assert(/!cal send/.test(msg), "explains the whisper-first model and !cal send");
+    // Name Variants no longer lives behind this page — it moved to Manage.
+    assert(!msg.includes("Name Variants"), "Name Variants picker is not this page anymore");
+  });
+
+  it("Name Variants stays reachable from the Manage hub (not from Help)", () => {
+    freshInstall();
+    completeSetup();
+    handleInput({ type: "api", content: "!cal manage", who: "GM (GM)", playerid: "GM" } as any);
+    const manageMsg = String((globalThis as any)._chatLog.slice(-1)[0].msg);
+    assert(manageMsg.includes("Calendar / Variant"), "Manage hub carries the Calendar/Variant button");
+    handleInput({ type: "api", content: "!cal calendar list", who: "GM (GM)", playerid: "GM" } as any);
+    const variantMsg = String((globalThis as any)._chatLog.slice(-1)[0].msg);
+    assert(variantMsg.includes("Name Variants"), "Calendar/Variant button still renders the Name Variants list");
   });
 
   it("!cal additional renders the §5.4 subsystem hub whispered to caller", () => {
