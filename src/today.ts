@@ -10,7 +10,7 @@ import { _deliverAdditionalCalendarRange, _deliverTopLevelCalendarRange, buildAd
 import { button, clamp, esc, eventLineHtml, _monthRangeFromSerial } from './rendering.js';
 import { _displayMonthDayParts, _hemisphereAffectsActiveWorld, _menuBox, _serialToDateSpec, _shiftSerialByMonth, additionalHubHtml, calendarSystemListHtml, currentDateLabel, dateLabelFromSerial, formalCurrentDateLabel, helpEventColorsMenu, helpReadingMenu, helpRootMenu, helpThemesMenu, manageHubHtml, nextForDayOnly, sendCurrentDate, setDate, settingsPanelHtml, stepDays, taskCardHtml, themeListHtml } from './ui.js';
 import { _normalizePackedWords, _playerTodayHtml, _showDefaultCalView, cleanWho, send, whisper, whisperUi } from './commands.js';
-import { _getMoonSys, _moonLastEvent, _moonNextEvent, _moonPeakPhaseDay, _moonPhaseEmoji, _moonPhaseLabel, handleMoonCommand, invalidateMoonModel, moonEnsureSequences, moonPhaseAt } from './moon.js';
+import { _getMoonSys, _moonLastEvent, _moonNextEvent, _moonPeakPhaseDay, _moonPhaseEmoji, handleMoonCommand, invalidateMoonModel, moonEnsureSequences, moonPhaseAt } from './moon.js';
 import { getPlanarState, _getAllPlaneData, _getPlaneData, handlePlanesCommand } from './planes.js';
 import { enginePlanes, getPlanePositions, serialToCalendarDate } from './engine-opts.js';
 import { engineEventDescription } from './worlds/index.js';
@@ -417,8 +417,8 @@ function _lunarCurrentHtml(){
 
   var rows = sys.moons.map(function(moon){
     var ph = moonPhaseAt(moon.name, today);
-    var emoji = _moonPhaseEmoji(ph.illum, ph.waxing);
-    var label = ph.label || _moonPhaseLabel(ph.illum, ph.waxing);
+    var label = ph.label;
+    var emoji = _moonPhaseEmoji(ph.label);
     var period = moon.synodicPeriod || moon.baseCycleDays || null;
 
     // Most recent inflection (full or new), whichever was more recent.

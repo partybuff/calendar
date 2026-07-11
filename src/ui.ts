@@ -292,7 +292,7 @@ export function sendCurrentDate(to, gmOnly, opts?){
 
         _sys.moons.forEach(function(moon){
           var ph = moonPhaseAt(moon.name, todaySer);
-          var emoji = _moonPhaseEmoji(ph.illum, ph.waxing);
+          var emoji = _moonPhaseEmoji(ph.label);
           var _thisNotable = false;
           var titleTag = '';
 

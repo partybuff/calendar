@@ -307,9 +307,11 @@ export function _moonPhaseAtRaw(moonName, serial){
 
 // Public moonPhaseAt — delegate to the engine.
 // Returns the legacy `{illum, waxing}` shape augmented with the engine's
-// canonical `label` and inflection flags. Callers that already used
-// `_moonPhaseLabel(ph.illum, ph.waxing)` keep working; callers that
-// want the engine's verdict directly can read `ph.label` / `ph.isFull`.
+// canonical `label` and inflection flags. `label` IS the engine's verdict —
+// callers must read `ph.label` (and map it through `_moonPhaseEmoji` for an
+// icon) rather than re-deriving Full/New from `ph.illum` themselves. That
+// re-derivation is exactly the bug this shape exists to prevent: see
+// `_moonPhaseEmoji` below for the single label→emoji mapping.
 export function moonPhaseAt(moonName, serial): any {
   var key = _moonKeyForName(moonName);
   if (!key) return { illum:0.5, waxing:true, label:'New', isFull:false, isNew:false };
@@ -448,33 +450,35 @@ function _structuralSlotIndex(sysKey: string, date: any): number | null {
   return null;
 }
 
-// Tight inflection bands. The engine's `isFull` / `isNew` verdicts land
-// on exactly one serial per cycle (peak illumination). These thresholds
-// only matter to label / emoji helpers that receive a bare
-// `(illum, waxing)` pair without the engine's verdict; we render "Full" /
-// "New" close enough to peak that the visual aligns with `phase.isFull`.
-// Callers that already have an engine `MoonPhase` should read
-// `phase.label` instead --- see `moonPhaseAt` above. The legacy
-// `MOON_TARGET_FULL_DAYS_PER_28` / `_phaseThresholdForCoverage` coverage
-// model is retired: the engine doesn't use illum thresholds, so we
-// can't tune the wrapper's label to a "target days per month" either.
-export var MOON_FULL_THRESHOLD = 0.98;
-export var MOON_NEW_THRESHOLD = 0.02;
-
-export function _moonPhaseLabel(illum, waxing){
-  if (illum >= MOON_FULL_THRESHOLD) return 'Full';
-  if (illum >= 0.55) return (waxing ? 'Waxing' : 'Waning') + ' Gibbous';
-  if (illum >= 0.45) return (waxing ? 'First' : 'Last')    + ' Quarter';
-  if (illum >  MOON_NEW_THRESHOLD)  return (waxing ? 'Waxing' : 'Waning') + ' Crescent';
-  return 'New';
-}
-
-export function _moonPhaseEmoji(illum, waxing){
-  if (illum >= MOON_FULL_THRESHOLD) return '\uD83C\uDF15';   // 🌕 Full
-  if (illum >= 0.55) return waxing ? '\uD83C\uDF14' : '\uD83C\uDF16';  // 🌔 🌖 Gibbous
-  if (illum >= 0.45) return waxing ? '\uD83C\uDF13' : '\uD83C\uDF17';  // 🌓 🌗 Quarter
-  if (illum >  MOON_NEW_THRESHOLD)  return waxing ? '\uD83C\uDF12' : '\uD83C\uDF18';  // 🌒 🌘 Crescent
-  return '\uD83C\uDF11';  // 🌑 New
+// Label -> emoji. The ONLY place phase iconography is decided. The
+// engine's `MoonPhase.label` (read via `moonPhaseAt(...).label`) is the
+// single source of truth for what phase a moon is in -- "Full" / "New"
+// land on exactly the engine's one inflection day per cycle, never a day
+// early from an illumination threshold. This function does no illum/
+// waxing math of its own; it only maps the engine's label string to the
+// icon that has always represented it. Every UI call site must derive
+// both label and emoji from the SAME `MoonPhase` (i.e. the same
+// `moonPhaseAt(...)` call) so the dashboard chip and the Lunar Current
+// panel can never disagree for the same moon/day.
+//
+// Retired: `MOON_FULL_THRESHOLD` / `MOON_NEW_THRESHOLD` (0.98 / 0.02) and
+// the `_moonPhaseLabel(illum, waxing)` re-derivation they backed. That
+// threshold called a moon "Full" whenever it was >=98% lit -- which, for
+// slower-cycle moons especially, lands a day (or several) before the
+// engine's actual crossing. Deleted rather than deprecated: keeping it
+// around invites a future call site to reach for it again.
+export function _moonPhaseEmoji(label){
+  switch (label){
+    case 'Full':            return '\uD83C\uDF15';  // Full
+    case 'Waxing Gibbous':  return '\uD83C\uDF14';  // Waxing Gibbous
+    case 'Waning Gibbous':  return '\uD83C\uDF16';  // Waning Gibbous
+    case 'First Quarter':   return '\uD83C\uDF13';  // First Quarter
+    case 'Last Quarter':    return '\uD83C\uDF17';  // Last Quarter
+    case 'Waxing Crescent': return '\uD83C\uDF12';  // Waxing Crescent
+    case 'Waning Crescent': return '\uD83C\uDF18';  // Waning Crescent
+    case 'New':             return '\uD83C\uDF11';  // New
+    default:                return '\uD83C\uDF11';  // fallback (unknown label)
+  }
 }
 
 export function _moonNextEvent(moonName, serial, type){
@@ -545,8 +549,8 @@ export function _moonNextEventStr(moon, today, type, _tier, horizonDays){
 // Render a single moon row. Players and the GM see the same content.
 export function _moonRowHtml(moon, today, _tier, horizonDays){
   var ph       = moonPhaseAt(moon.name, today);
-  var label    = _moonPhaseLabel(ph.illum, ph.waxing);
-  var emoji    = _moonPhaseEmoji(ph.illum, ph.waxing);
+  var label    = ph.label;
+  var emoji    = _moonPhaseEmoji(ph.label);
   var pct      = Math.round(ph.illum * 100);
 
   // Find next event to display
@@ -855,7 +859,7 @@ function _moonCompactStatusLines(today){
     var moon = sys.moons[i];
     var ph = moonPhaseAt(moon.name, today);
     if (!ph) continue;
-    var emoji = _moonPhaseEmoji(ph.illum, ph.waxing);
+    var emoji = _moonPhaseEmoji(ph.label);
     var peakType = _moonPeakPhaseDay(moon.name, today);
     if (peakType === 'full'){
       lines.push(emoji + ' <b>' + esc(moon.name) + '</b> is Full' + esc(_moonPhaseSpanSuffix(moon.name, today)));

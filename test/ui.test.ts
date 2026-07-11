@@ -7,7 +7,7 @@ import { setDate, stepDays } from "../src/ui.js";
 import { sendToAll, sendUiToGM } from "../src/messaging.js";
 import { helpEventColorsMenu, helpRootMenu } from "../src/ui.js";
 import { fromSerial, toSerial } from "../src/date-math.js";
-import { MOON_SYSTEMS, _moonNextThresholdEntry, _moonPeakPhaseDay, moonEnsureSequences } from "../src/moon.js";
+import { MOON_SYSTEMS, _moonNextThresholdEntry, _moonPeakPhaseDay, _moonPhaseEmoji, moonEnsureSequences, moonPhaseAt } from "../src/moon.js";
 import { _getAllPlaneData, getPlanarState } from "../src/planes.js";
 
 function setSerial(serial: number) {
@@ -153,6 +153,96 @@ describe("Task-focused UI", () => {
     assert(/lunar all 997/.test(msg.msg), "should have previous-year nav");
     assert(/lunar all 999/.test(msg.msg), "should have next-year nav");
     assert(/!cal additional/.test(msg.msg), "Back button should route to additional");
+  });
+
+  it("dashboard chip and Lunar Current panel agree on label + emoji for the same moon/day (single source of truth: the engine phase)", () => {
+    freshInstall();
+    completeSetup();
+
+    // Find an Eberron moon's engine Full inflection day within the first
+    // canonical year — `_moonPeakPhaseDay` reads the engine's isFull
+    // verdict directly, so this is genuinely the crossing day.
+    const start = toSerial(998, 0, 1);
+    let found: { serial: number; moon: string } | null = null;
+    outer: for (let s = start; s < start + 400; s++) {
+      for (const moon of MOON_SYSTEMS.eberron.moons as any[]) {
+        if (_moonPeakPhaseDay(moon.name, s) === "full") {
+          found = { serial: s, moon: moon.name };
+          break outer;
+        }
+      }
+    }
+    assert(found, "expected a Full inflection day within the first year");
+    const { serial, moon } = found!;
+
+    // The engine phase is the thing both UI paths must agree with.
+    const ph = moonPhaseAt(moon, serial);
+    assertEquals(ph.label, "Full", "engine phase must read Full on its own inflection day");
+    const expectedEmoji = _moonPhaseEmoji(ph.label);
+
+    setSerial(serial);
+
+    // Dashboard path (today.ts notable-moon chip, driven by ui.ts).
+    _showDefaultCalView({ who: "GM (GM)", playerid: "GM" } as any);
+    const dashboardMsg = String((globalThis as any)._chatLog.slice(-1)[0].msg);
+    const dashboardMatch = dashboardMsg.match(
+      new RegExp(`>(\\p{Extended_Pictographic})\\s*<b>${moon}</b>[^<]*is Full`, "u"),
+    );
+    assert(dashboardMatch, `expected dashboard chip line for ${moon} in:\n${dashboardMsg}`);
+    assertEquals(dashboardMatch![1], expectedEmoji, "dashboard chip emoji must equal the engine-mapped emoji");
+
+    // Lunar Current panel path (separate code path, today.ts _lunarCurrentHtml).
+    handleInput({ type: "api", content: "!cal lunar current", who: "GM (GM)", playerid: "GM" } as any);
+    const lunarMsg = String((globalThis as any)._chatLog.slice(-1)[0].msg);
+    const lunarMatch = lunarMsg.match(
+      new RegExp(`>(\\p{Extended_Pictographic})\\s*<b>${moon}</b> &mdash; ([^<]+?)(?: <span|</div>)`, "u"),
+    );
+    assert(lunarMatch, `expected Lunar Current row for ${moon} in:\n${lunarMsg}`);
+    assertEquals(lunarMatch![1], expectedEmoji, "Lunar Current emoji must equal the engine-mapped emoji");
+    assertEquals(lunarMatch![2], "Full", "Lunar Current label must read Full on the engine crossing day");
+
+    // The two paths must not just individually be right — they must match
+    // each other, since that agreement is the point of the unification.
+    assertEquals(dashboardMatch![1], lunarMatch![1], "dashboard and Lunar Current emoji must match");
+  });
+
+  it("Full/New land exactly on the engine crossing day, not a day early (0.98/0.02 threshold retired)", () => {
+    freshInstall();
+    completeSetup();
+
+    // Slow-cycle moons spend several days above 98% illumination around
+    // their crossing, which is exactly what made the old threshold-based
+    // label wrong. Vult (~102d cycle) has the widest band of any Eberron
+    // moon, so it's the sharpest demonstration.
+    const moonName = "Vult";
+    const start = toSerial(998, 0, 1);
+    let peakSerial: number | null = null;
+    for (let s = start; s < start + 400; s++) {
+      if (_moonPeakPhaseDay(moonName, s) === "full") { peakSerial = s; break; }
+    }
+    assert(peakSerial != null, "expected a Vult Full inflection day within the first year");
+
+    const OLD_FULL_THRESHOLD = 0.98; // retired wrapper threshold, reproduced here only to characterize the fix
+    const peakPh = moonPhaseAt(moonName, peakSerial!);
+    assertEquals(peakPh.label, "Full");
+    assertEquals(peakPh.isFull, true);
+
+    // At least one neighboring day must be a case the OLD threshold would
+    // have mislabeled Full (illum >= 0.98) but the engine does not: the
+    // whole point of this migration.
+    const before = moonPhaseAt(moonName, peakSerial! - 1);
+    const after = moonPhaseAt(moonName, peakSerial! + 1);
+    const oldWouldHaveSaidFull = (ph: any) => ph.illum >= OLD_FULL_THRESHOLD;
+    assert(
+      oldWouldHaveSaidFull(before) || oldWouldHaveSaidFull(after),
+      `expected at least one neighbor of the Vult Full day to sit above the old 0.98 threshold ` +
+      `(before.illum=${before.illum}, after.illum=${after.illum})`,
+    );
+    // Regardless of illumination, the engine (and thus the wrapper, which
+    // no longer re-derives Full from illum) must NOT call either neighbor
+    // Full — the crossing is exactly one day.
+    assert(before.label !== "Full" && before.isFull === false, `day before must not read Full, got "${before.label}"`);
+    assert(after.label !== "Full" && after.isFull === false, `day after must not read Full, got "${after.label}"`);
   });
 
   it("!cal planar current shows Past | Today | Upcoming sections on Eberron", () => {
