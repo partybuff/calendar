@@ -625,6 +625,20 @@ function _sweepLegacyStateSlots(root){
 }
 
 export function checkInstall(){
+  // ── ONE-TIME MIGRATION: state.CALENDAR → state[state_name] ──────────────
+  // Pre-rename installs persisted everything under the generic
+  // `state.CALENDAR` slot, which any other API script a GM has installed
+  // that also uses `state.CALENDAR` could collide with. Move the whole
+  // blob, as-is (no field-by-field copying — nothing is dropped), to the
+  // namespaced key. Idempotent: once state[state_name] exists this branch
+  // never fires again, so it runs exactly once per campaign. This MUST be
+  // the first state access in checkInstall(), before anything below reads
+  // or creates state[state_name].
+  if (state.CALENDAR && !state[state_name]) {
+    state[state_name] = state.CALENDAR;
+    delete state.CALENDAR;
+  }
+
   if(!state[state_name]) state[state_name] = {};
   ensureSetupState();
   ensureSettings();

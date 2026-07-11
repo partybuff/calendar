@@ -108,7 +108,7 @@ describe("Obsolete-key sweep — checkInstall cleans old-style persisted state",
 });
 
 describe("Normal play no longer grows persisted state with moon history", () => {
-  it("advance/set/show/lunar keep working, and state.CALENDAR does not grow the way the old recentHistory cache did", () => {
+  it("advance/set/show/lunar keep working, and state.PartyBuffCalendar does not grow the way the old recentHistory cache did", () => {
     freshInstall();
     completeSetup();
     const state = (globalThis as any).state;
