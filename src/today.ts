@@ -10,7 +10,7 @@ import { _deliverAdditionalCalendarRange, _deliverTopLevelCalendarRange, buildAd
 import { button, clamp, esc, eventLineHtml, _monthRangeFromSerial } from './rendering.js';
 import { _displayMonthDayParts, _hemisphereAffectsActiveWorld, _menuBox, _serialToDateSpec, _shiftSerialByMonth, additionalHubHtml, calendarSystemListHtml, currentDateLabel, dateLabelFromSerial, formalCurrentDateLabel, helpEventColorsMenu, helpReadingMenu, helpRootMenu, helpThemesMenu, manageHubHtml, nextForDayOnly, sendCurrentDate, setDate, settingsPanelHtml, stepDays, taskCardHtml, themeListHtml } from './ui.js';
 import { _normalizePackedWords, _playerTodayHtml, _showDefaultCalView, cleanWho, send, whisper, whisperUi } from './commands.js';
-import { _getMoonSys, _moonLastEvent, _moonNextEvent, _moonPeakPhaseDay, _moonPhaseEmoji, handleMoonCommand, invalidateMoonModel, moonEnsureSequences, moonPhaseAt } from './moon.js';
+import { _getMoonSys, _moonLastEvent, _moonNextEvent, _moonPeakPhaseDay, _moonPhaseEmoji, handleMoonCommand, moonEnsureSequences, moonPhaseAt } from './moon.js';
 import { getPlanarState, _getAllPlaneData, _getPlaneData, handlePlanesCommand } from './planes.js';
 import { enginePlanes, getPlanePositions, serialToCalendarDate } from './engine-opts.js';
 import { engineEventDescription } from './worlds/index.js';
@@ -1033,7 +1033,6 @@ export var commands = {
     // Reset manual theme override so variant default takes effect.
     ensureSettings().colorTheme = null;
     applyCalendarSystem(sysKey, vk);
-    invalidateMoonModel(false);
     _invalidateSerialCache();
     refreshAndSend();
     var msg = 'Setting: <b>'+esc(sys.label||titleCase(sysKey))+'</b>';

@@ -142,7 +142,7 @@ function _applyWorldPick(msg: any, sysKey: string): void {
   // wiped state so applyCalendarSystem has something to mutate.
   delete (state as any)[state_name];
   (state as any)[state_name] = {
-    setup: { status: 'complete', draft: {} },
+    setup: { status: 'complete' },
   };
   ensureSettings();
   checkInstall();

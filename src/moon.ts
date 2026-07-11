@@ -1,14 +1,14 @@
 // Section 20: Moon System
 import { moons as engineMoons } from '@partybuff/calendar-engine';
 import type { MoonPhase as EngineMoonPhase } from '@partybuff/calendar-engine';
-import { CONTRAST_MIN_HEADER, STYLES, state_name } from './constants.js';
+import { CONTRAST_MIN_HEADER, STYLES } from './constants.js';
 import { defaults, ensureSettings, getCal, titleCase } from './state.js';
 import { _contrast, applyBg } from './color.js';
 import { fromSerial, toSerial, todaySerial } from './date-math.js';
-import { _monthRangeFromSerial, _renderSyntheticMiniCal, button, esc, handoutWrap, rollingMonthWindow } from './rendering.js';
+import { button, esc } from './rendering.js';
 import { _displayMonthDayParts, _legendLine, _menuBox, _serialToDateSpec, _shiftSerialByMonth, dateLabelFromSerial, formalDateLabelFromSerial, parseDatePrefixForAdd } from './ui.js';
 import { send, whisper, whisperParts } from './commands.js';
-import { _getPlaneData, getPlanarState, getPlanesState } from './planes.js';
+import { _getPlaneData, getPlanarState } from './planes.js';
 import { getStructuralArray, getWorld } from './worlds/index.js';
 import { getEngineWorld, getEngineWorldId, getMoonOpts, serialToCalendarDate } from './engine-opts.js';
 
@@ -129,98 +129,24 @@ export function _getMoonSys(sysKeyOverride?){
 }
 
 // Dragonlance Night-of-the-Eye and per-moon fixed-anchor resolution
-// previously lived here. Both are engine-owned as of PR 2c: the engine
-// consumes `state.imported.krynnAnchor` / `state.imported.lunarAnchors`
-// via the `PhaseOptions` bag from `getMoonOpts()`. The wrapper no longer
-// resolves anchors locally.
+// previously lived here. Both are engine-owned as of PR 2c. Per #198,
+// `getMoonOpts()` always returns `{}` — moons are canon-only, with no
+// GM-tunable anchors — so the wrapper never resolves or threads anchors
+// locally, and no `state.imported` anchor data is read here at all.
 
 // ---------------------------------------------------------------------------
 // 20b) State helpers
 // ---------------------------------------------------------------------------
 
-// `state.PartyBuffCalendar.moons` is largely vestigial after PR 2c —
-// the engine carries no per-wrapper state. We keep the slot for
-// compatibility (existing campaigns may still have one persisted) and
-// for the surviving `recentHistory.bySerial` chat-history cache used by
-// ui.ts when stamping moon icons onto the rolling 3-month view. All
-// other fields (`sequences`, `systemSeed`, `systemAnchors`,
-// `gmAnchors`, `generatedFrom`, `generatedThru`, `modelRevision`) are
-// retained as init-safe defaults so old persisted blobs don't crash
-// renders, but nothing writes to them any more.
-export function getMoonState(){
-  var root = state[state_name];
-  if (!root.moons) root.moons = {
-    sequences: {},
-    systemSeed: null,
-    systemAnchors: {},
-    gmAnchors: {},
-    generatedFrom: null,
-    generatedThru: 0,
-    modelRevision: 1,
-    recentHistory: { bySerial: {}, minSerial: null, maxSerial: null }
-  };
-  var ms = root.moons;
-  if (!ms.recentHistory || typeof ms.recentHistory !== 'object'){
-    ms.recentHistory = { bySerial: {}, minSerial: null, maxSerial: null };
-  }
-  if (!ms.recentHistory.bySerial || typeof ms.recentHistory.bySerial !== 'object'){
-    ms.recentHistory.bySerial = {};
-  }
-  return ms;
-}
-
-function _cloneMoonMiniCalEvents(events){
-  if (!Array.isArray(events)) return [];
-  return events.map(function(evt: any){
-    var copy: any = {
-      serial: evt && isFinite(evt.serial) ? (evt.serial|0) : 0,
-      name: String(evt && evt.name || ''),
-      color: evt && evt.color
-    };
-    if (evt && evt.dotOnly) copy.dotOnly = true;
-    if (evt && evt.planeFill) copy.planeFill = true;
-    if (evt && evt.isRemote) copy.isRemote = true;
-    if (evt && evt.splitColor) copy.splitColor = evt.splitColor;
-    if (evt && evt.splitIsRemote) copy.splitIsRemote = true;
-    if (evt && evt.replaceNumeral) copy.replaceNumeral = evt.replaceNumeral;
-    return copy;
-  });
-}
-
-function _reindexMoonHistory(history){
-  if (!history || !history.bySerial || typeof history.bySerial !== 'object'){
-    return { bySerial: {}, minSerial: null, maxSerial: null };
-  }
-  var min = null;
-  var max = null;
-  Object.keys(history.bySerial).forEach(function(key){
-    var serial = parseInt(key, 10);
-    if (!isFinite(serial)){
-      delete history.bySerial[key];
-      return;
-    }
-    if (min == null || serial < min) min = serial;
-    if (max == null || serial > max) max = serial;
-  });
-  history.minSerial = min;
-  history.maxSerial = max;
-  return history;
-}
-
-function _moonHistoryState(){
-  return _reindexMoonHistory(getMoonState().recentHistory);
-}
-
-function _storeMoonHistorySnapshot(ms, snapshot){
-  if (!snapshot || !isFinite(snapshot.serial)) return null;
-  var history = _moonHistoryState();
-  var key = String(snapshot.serial|0);
-  history.bySerial[key] = snapshot;
-  if (history.minSerial == null || snapshot.serial < history.minSerial) history.minSerial = snapshot.serial|0;
-  if (history.maxSerial == null || snapshot.serial > history.maxSerial) history.maxSerial = snapshot.serial|0;
-  ms.recentHistory = history;
-  return snapshot;
-}
+// `state.PartyBuffCalendar.moons` (and its `getMoonState()` accessor) was
+// removed in the post-#159/#198 cleanup: the engine carries no per-wrapper
+// moon state, and the last resident — a `recentHistory.bySerial` chat-
+// history cache — was write-only. It was populated on every date change
+// but no render path ever read it; the actual moon-icon stamping (Today
+// dashboard, Moons panel) always queried `moonPhaseAt` / `_moonPeakPhaseDay`
+// live. See CLAUDE.md's persisted-state guidance — Roll20 serializes
+// `state.PartyBuffCalendar` as JSON on every write, so a write-only cache
+// was pure bloat.
 
 export function _moonHashStr(str){
   // String -> deterministic float 0..1
@@ -242,9 +168,7 @@ export function _moonHashStr(str){
 // `MOON_PREDICTION_LIMITS.highMaxDays` bounds the engine's `nextEvent`
 // horizon scan; the wrapper used to pre-generate two years of phases at
 // init, but the engine computes phases closed-form, so this is now
-// purely a forecast-lookahead cap. `MOON_HISTORY_DAYS` is the chat-
-// history window length used by ui.ts when stamping moon icons onto
-// the rolling 3-month view. `MOON_PRE_GENERATE_YEARS` is kept as a
+// purely a forecast-lookahead cap. `MOON_PRE_GENERATE_YEARS` is kept as a
 // no-op compatibility export — no pre-generation happens any more.
 export var MOON_PRE_GENERATE_YEARS = 2;
 export var MOON_PREDICTION_LIMITS = {
@@ -252,7 +176,6 @@ export var MOON_PREDICTION_LIMITS = {
   mediumMaxDays: 280,
   highMaxDays: 672
 };
-export var MOON_HISTORY_DAYS = 60;
 
 // ---------------------------------------------------------------------------
 // 20g) Ensure sequences are generated / up to date
@@ -629,172 +552,6 @@ export function _moonRowHtml(moon, today, _tier, horizonDays){
   return result;
 }
 
-// Returns true when the moon system has only one moon that should drive cell
-// fills (single-moon mini-cal style).  Exandria has two moons but Ruidus uses
-// a visibility window and shouldn't control cell colours — only Catha should.
-export function _isSingleFillMoon(sys){
-  if (!sys || !sys.moons) return true;
-  // Count moons whose lore doesn't mark them as visibility-window-only.
-  // The inline MOON_SYSTEMS data doesn't carry visibilityMode, so we match
-  // by name against known visibility-window moons.
-  var VISIBILITY_WINDOW_MOONS = { Ruidus: true };
-  var fillCount = 0;
-  for (var i = 0; i < sys.moons.length; i++){
-    if (!VISIBILITY_WINDOW_MOONS[sys.moons[i].name]) fillCount++;
-  }
-  return fillCount <= 1;
-}
-
-function _moonMiniCalDayEvents(serial, _tier, _baseHorizonDays?, opts?){
-  opts = opts || {};
-  var sys = opts.sys || _getMoonSys();
-  var out = [];
-  if (!sys || !sys.moons || !sys.moons.length) return out;
-  var ser = serial|0;
-  var singleFill = (opts.singleFill !== undefined) ? !!opts.singleFill : _isSingleFillMoon(sys);
-  var fullMoons = [];
-  var newMoons = [];
-
-  for (var i = 0; i < sys.moons.length; i++){
-    var moon = sys.moons[i];
-    var peakType = _moonPeakPhaseDay(moon.name, ser);
-    if (peakType === 'full'){
-      var span = _moonPhaseSpan(moon.name, ser);
-      var spanTag = (span && span.totalDays > 1) ? ' Day ' + span.dayNum + '/' + span.totalDays : '';
-      fullMoons.push(moon.name + spanTag);
-    } else if (peakType === 'new'){
-      var span2 = _moonPhaseSpan(moon.name, ser);
-      var spanTag2 = (span2 && span2.totalDays > 1) ? ' Day ' + span2.dayNum + '/' + span2.totalDays : '';
-      newMoons.push(moon.name + spanTag2);
-    }
-  }
-
-  // Multi-moon systems: dot-only indicators (no cell fill).
-  // Single-fill systems: cell fill + emoji numeral replacement on peak days.
-  if (!singleFill){
-    if (fullMoons.length){
-      out.push({
-        serial: ser,
-        name: 'Full: ' + fullMoons.join(', '),
-        color: '#FFD700',
-        dotOnly: true
-      });
-    }
-    if (newMoons.length){
-      out.push({
-        serial: ser,
-        name: 'New: ' + newMoons.join(', '),
-        color: '#222222',
-        dotOnly: true
-      });
-    }
-  } else {
-    if (fullMoons.length){
-      out.push({
-        serial: ser,
-        name: 'Full: ' + fullMoons.join(', '),
-        color: '#FFD700',
-        replaceNumeral: '\uD83C\uDF15'
-      });
-    }
-    if (newMoons.length){
-      out.push({
-        serial: ser,
-        name: 'New: ' + newMoons.join(', '),
-        color: '#222222',
-        replaceNumeral: '\uD83C\uDF11'
-      });
-    }
-  }
-
-  return out;
-}
-
-export function captureMoonHistoryDay(serial){
-  var st = ensureSettings();
-  if (st.moonsEnabled === false) return null;
-  var sys = _getMoonSys();
-  if (!sys || !sys.moons || !sys.moons.length) return null;
-  var ms = getMoonState();
-  var ser = serial|0;
-  moonEnsureSequences(ser, MOON_PREDICTION_LIMITS.highMaxDays);
-  var snapshot = {
-    serial: ser,
-    modelRevision: ms.modelRevision,
-    miniCalEvents: _cloneMoonMiniCalEvents(_moonMiniCalDayEvents(ser, 'high', MOON_PREDICTION_LIMITS.highMaxDays, {
-      sys: sys,
-      today: ser,
-      singleFill: _isSingleFillMoon(sys)
-    }))
-  };
-  return _storeMoonHistorySnapshot(ms, snapshot);
-}
-
-export function captureMoonHistoryWindow(startSerial, endSerial){
-  var st = ensureSettings();
-  if (st.moonsEnabled === false) return _moonHistoryState();
-  var sys = _getMoonSys();
-  if (!sys || !sys.moons || !sys.moons.length) return _moonHistoryState();
-  var start = startSerial|0;
-  var end = endSerial|0;
-  if (end < start){ var tmp = start; start = end; end = tmp; }
-  if (end < start) return _moonHistoryState();
-  moonEnsureSequences(end, MOON_PREDICTION_LIMITS.highMaxDays);
-  var ms = getMoonState();
-  var singleFill = _isSingleFillMoon(sys);
-  for (var ser = start; ser <= end; ser++){
-    _storeMoonHistorySnapshot(ms, {
-      serial: ser,
-      modelRevision: ms.modelRevision,
-      miniCalEvents: _cloneMoonMiniCalEvents(_moonMiniCalDayEvents(ser, 'high', MOON_PREDICTION_LIMITS.highMaxDays, {
-        sys: sys,
-        today: ser,
-        singleFill: singleFill
-      }))
-    });
-  }
-  return _moonHistoryState();
-}
-
-export function pruneMoonHistory(referenceSerial?){
-  var ms = getMoonState();
-  var history = _moonHistoryState();
-  var ref = isFinite(referenceSerial) ? (referenceSerial|0) : todaySerial();
-  var keepMin = ref - (MOON_HISTORY_DAYS - 1);
-  var keepMax = ref;
-  Object.keys(history.bySerial).forEach(function(key){
-    var serial = parseInt(key, 10);
-    var day = history.bySerial[key];
-    if (!isFinite(serial) || serial < keepMin || serial > keepMax || !day || day.modelRevision !== ms.modelRevision){
-      delete history.bySerial[key];
-    }
-  });
-  ms.recentHistory = _reindexMoonHistory(history);
-  return ms.recentHistory;
-}
-
-export function resetMoonHistory(referenceSerial?, seedToday?){
-  var ms = getMoonState();
-  ms.recentHistory = {
-    bySerial: {},
-    minSerial: null,
-    maxSerial: null
-  };
-  if (seedToday === false) return ms.recentHistory;
-  var ref = isFinite(referenceSerial) ? (referenceSerial|0) : todaySerial();
-  captureMoonHistoryDay(ref);
-  return pruneMoonHistory(ref);
-}
-
-// The legacy invalidation chain (sequence cache, derived caches,
-// modelRevision bump) is a no-op now that the engine is closed-form
-// per-call. Kept exported because today.ts still calls it after date
-// mutations — the surviving work is reseeding the recentHistory
-// window so subsequent renders show fresh moon icons.
-export function invalidateMoonModel(seedToday?){
-  return resetMoonHistory(todaySerial(), seedToday);
-}
-
 // ---------------------------------------------------------------------------
 // Single-moon mini-calendar — shows one moon's phases across a month.
 // Cells are color-filled with the phase emoji; no dots needed.
@@ -926,7 +683,6 @@ export function moonPanelParts(serialOverride?){
     )];
   }
 
-  var ms  = getMoonState();
   var cal = getCal();
   var cur = cal.current;
   var today = isFinite(serialOverride) ? (serialOverride|0) : toSerial(cur.year, cur.month, cur.day_of_the_month);

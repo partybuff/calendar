@@ -1,7 +1,7 @@
 /**
  * Engine bridge — wrapper → @partybuff/calendar-engine.
  *
- * Three concerns live here:
+ * Two concerns live here:
  *
  *   1. Resolving the wrapper's `state.settings.calendarSystem` (an
  *      overlay key like `'eberron'` or `'faerun-modern'`) to an engine
@@ -14,14 +14,15 @@
  *      with a `kind: 'intercalary'` discriminator on the date. The
  *      `getStructuralSlot()` table from `src/worlds/index.ts` encodes
  *      that mapping per-slot.
- *   3. Reading per-campaign anchors from `state.PartyBuffCalendar.imported`
- *      (populated by `!cal token`) and emitting the engine's
- *      `PhaseOptions` / `PlanePositions` shapes.
+ *
+ * Moons and planes are canon-only (#198): `getMoonOpts()` /
+ * `getPlanePositions()` below always return `{}` — there is no
+ * per-campaign anchor state to read any more (`state.imported` was
+ * retired as a follow-up; a `!cal token` no longer carries anchor
+ * fields at all).
  *
  * Every call here is cheap (object construction + small lookups, no
- * I/O); we don't memoize. The token-apply path that mutates
- * `state.imported` is rare; we trade a few extra object literals per
- * render for not having to invalidate a cache.
+ * I/O); we don't memoize.
  */
 
 import { worlds, planes as enginePlanes } from '@partybuff/calendar-engine';

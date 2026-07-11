@@ -77,6 +77,16 @@ function _setupRoot(){
   return state[state_name];
 }
 
+// `root.moons` / `root.planes` used to factor into this check (any
+// campaign that had persisted moon or planar state was assumed
+// "already set up"). Both slots are retired — moons carried only a
+// write-only history cache and vestigial pre-engine fields nothing
+// read; planes carried an accessor (`getPlanesState`) with zero
+// callers. Any real campaign that ever populated those slots also
+// already has `root.calendar` / `root.settings` (checkInstall always
+// lays those down first), so dropping the moons/planes check here is
+// a no-op for genuine campaigns — it just stops a retired slot from
+// masquerading as setup signal.
 function _hasMeaningfulSetupData(root){
   if (!root || typeof root !== 'object') return false;
   if (root.calendar && (
@@ -86,7 +96,6 @@ function _hasMeaningfulSetupData(root){
     (Array.isArray(root.calendar.events) && root.calendar.events.length)
   )) return true;
   if (root.settings && Object.keys(root.settings).length) return true;
-  if (root.moons || root.planes) return true;
   if (root.suppressedDefaults && Object.keys(root.suppressedDefaults).length) return true;
   if (root.suppressedSources && Object.keys(root.suppressedSources).length) return true;
   if (root.manualSuppressedSources && Object.keys(root.manualSuppressedSources).length) return true;
@@ -98,8 +107,7 @@ export function ensureSetupState(){
   var root = _setupRoot();
   if (!root.setup || typeof root.setup !== 'object'){
     root.setup = {
-      status: _hasMeaningfulSetupData(root) ? 'complete' : 'uninitialized',
-      draft: {}
+      status: _hasMeaningfulSetupData(root) ? 'complete' : 'uninitialized'
     };
   }
   var setup = root.setup;
@@ -107,7 +115,10 @@ export function ensureSetupState(){
   if (!/^(uninitialized|dismissed|in_progress|complete)$/.test(setup.status)){
     setup.status = _hasMeaningfulSetupData(root) ? 'complete' : 'uninitialized';
   }
-  if (!setup.draft || typeof setup.draft !== 'object') setup.draft = {};
+  // `setup.draft` backed a multi-step wizard retired by the §10 token
+  // revision (setup.ts is now a one-step world picker). Nothing has
+  // read it since; drop it instead of re-stamping it on every init.
+  delete setup.draft;
   return setup;
 }
 
@@ -253,6 +264,11 @@ export function ensureSettings(){
   delete s.offCyclePlanes;
   delete s.eventsEnabled;
   delete s.subsystemVerbosity;
+  // `structureSet` was re-written on every applyCalendarSystem() call but
+  // had no reader (applyStructureSet takes the set name as a direct
+  // param, never from st.structureSet) — stop stamping it (see
+  // applyCalendarSystem below) and sweep any already-persisted copies.
+  delete s.structureSet;
   // Migrate renamed season variants.
   var _svMig = s.seasonVariant;
   if (_svMig === 'northern'){
@@ -462,10 +478,8 @@ export function applyCalendarSystem(sysKey, varKey?){
 
   // --- Structure (intercalary days) -----------------------------------------
   if (sys.structure){
-    st.structureSet = sys.structure;
     applyStructureSet(sys.structure);
   } else {
-    st.structureSet = null;
     cal.months = sys.monthDays.map(function(d, i){ return { days: d, regularIndex: i }; });
   }
 
@@ -591,10 +605,30 @@ export function effectiveColorTheme(){
   return (variant && variant.colorTheme) || 'lunar';
 }
 
+// Legacy top-level state slots with no production reader, swept
+// unconditionally on every checkInstall so old campaigns don't carry them
+// forever. Idempotent — a no-op once a campaign has already been cleaned.
+//   - `moons`: pre-engine per-wrapper moon state (sequence buffers, GM
+//     anchors, and later a write-only history cache) — the engine is
+//     closed-form and canon-only, so nothing reads this any more.
+//   - `planes`: pre-engine planar overrides/anchors/suppression blob —
+//     its sole accessor (`getPlanesState`) had zero callers.
+//   - `imported`: `!cal token` anchor persistence (lunarAnchors /
+//     krynnAnchor / planarAnchors / appliedAt / schemaVersion) — moons
+//     and planes are canon-only (`getMoonOpts()` / `getPlanePositions()`
+//     always return `{}`), so these anchors were validated and stored
+//     but never read.
+function _sweepLegacyStateSlots(root){
+  delete root.moons;
+  delete root.planes;
+  delete root.imported;
+}
+
 export function checkInstall(){
   if(!state[state_name]) state[state_name] = {};
   ensureSetupState();
   ensureSettings();
+  _sweepLegacyStateSlots(state[state_name]);
 
   if(!state[state_name].calendar ||
      !Array.isArray(state[state_name].calendar.weekdays) ||

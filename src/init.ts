@@ -11,7 +11,7 @@ import { _displayMonthDayParts, currentDateLabel, setDate, stepDays } from './ui
 import { _todayAllHtml } from './today.js';
 import { notifySetupStatusOnReady } from './setup.js';
 import { register } from './boot-register.js';
-import { MOON_SYSTEMS, _moonHashStr, getMoonState, moonEnsureSequences, moonPhaseAt } from './moon.js';
+import { MOON_SYSTEMS, _moonHashStr, moonEnsureSequences, moonPhaseAt } from './moon.js';
 
 
 /* ============================================================================
@@ -96,7 +96,6 @@ if (typeof globalThis !== 'undefined' && (globalThis as any).__CALENDAR_TEST_MOD
     colorForMonth:       colorForMonth,
 
     // moons
-    getMoonState:        getMoonState,
     _moonHashStr:        _moonHashStr,
     moonPhaseAt:         moonPhaseAt,
     moonEnsureSequences: moonEnsureSequences,
