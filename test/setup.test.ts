@@ -68,7 +68,11 @@ describe("Setup onboarding", () => {
     notifySetupStatusOnReady();
     const msg = lastChat();
     assert(msg);
-    assert(msg.msg.startsWith("/direct "));
+    // Boot summary fires on every sandbox restart (Roll20 restarts sandboxes
+    // often) — it must whisper the GM, not broadcast to the whole table.
+    // `!cal send` is the only public broadcast surface (CLAUDE.md).
+    assert(msg.msg.startsWith("/w gm "));
+    assertEquals(msg.opts.noarchive, true);
     assert(msg.msg.includes("Galifar Calendar Initialized"));
     assert(msg.msg.includes("font-style:italic"));
     assert(msg.msg.includes("Current date: <b>1st of Zarantyr, 998 YK</b>"));

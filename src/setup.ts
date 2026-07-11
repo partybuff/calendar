@@ -23,7 +23,7 @@
 
 import { CALENDAR_SYSTEMS } from './config.js';
 import { state_name } from './constants.js';
-import { cleanWho, sendUiToAll, sendUiToGM, whisperUi } from './messaging.js';
+import { cleanWho, sendUiToGM, whisperUi } from './messaging.js';
 import { button, esc } from './rendering.js';
 import { applyCalendarSystem, checkInstall, ensureSettings, getCal, getSetupState, setupIsComplete } from './state.js';
 import { currentDateLabel, dateLabelFromSerial } from './ui.js';
@@ -105,7 +105,9 @@ function _bootSummaryHtml(calLabel: string): string {
 }
 
 /** Boot-side summary fired by `init.ts` after `checkInstall`. For
- *  already-complete campaigns, a public "calendar's up" line. For
+ *  already-complete campaigns, a GM-only "calendar's up" whisper — Roll20
+ *  restarts sandboxes often, and `!cal send` is the only public broadcast
+ *  surface (CLAUDE.md), so this must never go to the whole table. For
  *  uninitialized campaigns, the welcome whisper. For dismissed
  *  campaigns, silence (the GM said "not now"). */
 export function notifySetupStatusOnReady() {
@@ -114,7 +116,7 @@ export function notifySetupStatusOnReady() {
     const sys: any = CALENDAR_SYSTEMS[st.calendarSystem] || {};
     const variant: any = ((sys.variants || {})[st.calendarVariant]) || {};
     const calLabel = String(variant.label || sys.label || 'Calendar');
-    sendUiToAll(_bootSummaryHtml(calLabel));
+    sendUiToGM(_bootSummaryHtml(calLabel));
     return;
   }
   const setup = getSetupState();

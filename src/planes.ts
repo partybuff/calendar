@@ -22,7 +22,7 @@ import { fromSerial, toSerial, todaySerial } from './date-math.js';
 import { _monthRangeFromSerial, _renderSyntheticMiniCal, button, esc, handoutWrap } from './rendering.js';
 import { _chunkMonthsForDelivery, _deliverAdditionalCalendarRange, _deliverTopLevelCalendarRange, buildAdditionalRangesCommand } from './events.js';
 import { _displayModeLabel, _legendLine, _menuBox, _normalizeDisplayMode, _serialToDateSpec, _shiftSerialByMonth, dateLabelFromSerial, formalDateLabelFromSerial, parseDatePrefixForAdd } from './ui.js';
-import { sendToAll, warnGM, whisper, whisperParts } from './commands.js';
+import { whisper, whisperParts } from './commands.js';
 
 /* ============================================================================
  * 21) PLANAR SYSTEM — canon-only
@@ -628,15 +628,11 @@ export function planesPanelHtml(isGM, serialOverride?){
     );
   }
 
-  // GM controls — read-only display only, plus Send-to-Players + plane picker.
+  // GM controls — read-only display only, plus plane picker.
   var gmControls = '';
   if (isGM){
     var planeQueryOpts = planes.map(function(p){ return p.name; }).join('|');
     gmControls = '<div style="margin:4px 0;">' +
-      button('Send to Players','planes send') +
-      '</div>' +
-      '<div style="border-top:1px solid rgba(0,0,0,.08);margin:6px 0 4px 0;"></div>' +
-      '<div style="margin:4px 0;">' +
       button('Show Specific Plane', 'planes view ?{Select Plane|' + planeQueryOpts + '}') +
       '</div>' +
       '<div style="border-top:1px solid rgba(0,0,0,.08);margin:6px 0 4px 0;"></div>' +
@@ -721,26 +717,6 @@ function _planesRangeHtml(spec, _isGM){
     parts.push(_menuBox(title + ' (' + (i + 1) + '/' + chunks.length + ')', chunkBody));
   }
   return parts;
-}
-
-function _planesBroadcastSummaryHtml(serialOverride?){
-  var today = isFinite(serialOverride) ? (serialOverride|0) : todaySerial();
-  var planes = _getAllPlaneData();
-  var rows = [];
-  for (var i = 0; i < planes.length; i++){
-    var ps = getPlanarState(planes[i].name, today);
-    if (!ps) continue;
-    var label = PLANE_PHASE_LABELS[ps.phase] || ps.phase;
-    rows.push(
-      '<div style="margin:2px 0;">' +
-        (PLANE_PHASE_EMOJI[ps.phase] || '⚪') + ' <b>' + esc(ps.plane.name) + '</b> — ' + esc(label) +
-      '</div>'
-    );
-  }
-  return _menuBox('🌀 Planar Almanac — ' + esc(dateLabelFromSerial(today)),
-    _planesTodaySummaryHtml(today) +
-    rows.join('')
-  );
 }
 
 // ---------------------------------------------------------------------------
@@ -836,13 +812,6 @@ export function handlePlanesCommand(m, args){
     return whisperParts(m.who, planesPanelHtml(true));
   }
 
-  // !cal planes send — broadcast a non-interactive almanac to players
-  if (sub === 'send'){
-    sendToAll(_planesBroadcastSummaryHtml());
-    warnGM('Sent planar almanac to players.');
-    return whisperParts(m.who, planesPanelHtml(true));
-  }
-
   // !cal planes ranges <rangeArgs>  — Additional Ranges
   if (sub === 'ranges'){
     var rangeArgs = args.slice(2);
@@ -860,7 +829,6 @@ export function handlePlanesCommand(m, args){
     '<code>!cal planes view &lt;name&gt;</code> &nbsp;·&nbsp; '+
     '<code>!cal planes on &lt;dateSpec&gt;</code> &nbsp;·&nbsp; '+
     '<code>!cal planes ranges &lt;rangeSpec&gt;</code> &nbsp;·&nbsp; '+
-    '<code>!cal planes send</code> &nbsp;·&nbsp; '+
     '<code>!cal planes toggle</code>'
   );
 }
