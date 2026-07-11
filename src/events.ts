@@ -5,6 +5,7 @@ import { _sourceAllowedForCalendar, _withCadence, deepClone, defaults, effective
 import { _stableHash, resolveColor } from './color.js';
 import { _daysBeforeYear, _isLeapMonth, _nextActiveMi, _prevActiveMi, _serialCache, daysPerYear, fromSerial, toSerial, todaySerial, weekStartSerial, weekdayIndex } from './date-math.js';
 import { DaySpec, Parse, isTodayVisibleInRange } from './parsing.js';
+import { monthTableColumns } from './shared/render-month-table.js';
 import { _calendarCellInnerHtml, _renderHarptosFestivalStrip, clamp, closeMonthTable, esc, eventLineHtml, formatDateLabel, makeDayCtx, openMonthTable, renderMiniCal, renderMonthTable, tdHtmlForDay, yearHTMLFor } from './rendering.js';
 import { _displayMonthDayParts, _menuBox, currentDateLabel, monthStepperHtml, nextForDayOnly, nextForMonthDay, showNavTailHtml } from './ui.js';
 import { sendToAllParts, whisper, whisperParts } from './commands.js';
@@ -712,7 +713,14 @@ export function occurrencesInRange(startSerial, endSerial){
 }
 
 export function _rowDaysInMonth(y, mi, rowStart){
-  var cal = getCal(), wdCount = cal.weekdays.length|0, out = [];
+  // BUG (fixed): this used to loop `cal.weekdays.length` raw, which is 0 for
+  // weekless calendars (Barovia) — the loop below never ran, so every row
+  // came back empty and adjacentPartialMonths' boundary strip collected an
+  // empty wanted-set unconditionally (see renderMonthStripWantedDays' "(no
+  // days)"/colspan=0 fallback). Weekless calendars still lay out on a fixed
+  // 7-column week block (see date-math.ts::weekStartSerial's weekless
+  // branch), so route the column count through the shared helper.
+  var cal = getCal(), wdCount = monthTableColumns(cal.weekdays).cols, out = [];
   for (var c=0; c<wdCount; c++){
     var d = fromSerial(rowStart + c);
     if (d.year === y && d.mi === mi) out.push(d.day);
@@ -732,13 +740,15 @@ export function renderMonthStripWantedDays(year, mi, wantedSet, dimActive, extra
   }
   var parts = openMonthTable(mi, year);
   var html  = [parts.html];
-  var wdCnt = getCal().weekdays.length|0;
+  var wdCnt = monthTableColumns(getCal().weekdays).cols;
 
   var minD = _setMin(wantedSet), maxD = _setMax(wantedSet);
   if (minD == null || maxD == null){
-    html.push('<tr><td colspan="'+wdCnt+'" style="'+STYLES.calTd+';opacity:.6;">'+_calendarCellInnerHtml('(no days)')+'</td></tr>');
-    html.push(closeMonthTable());
-    return html.join('');
+    // Genuinely nothing to show for this boundary — render nothing rather
+    // than a placeholder row. (Previously this pushed a "(no days)" row
+    // with colspan=wdCnt, which was 0 for weekless calendars because wdCnt
+    // came from the raw, un-defaulted weekday count.)
+    return '';
   }
 
   var firstRow = weekStartSerial(year, mi, minD);
