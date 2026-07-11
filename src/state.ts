@@ -8,7 +8,7 @@ import { _invalidateSerialCache } from './date-math.js';
 import { DaySpec, Parse } from './parsing.js';
 import { compareEvents, currentDefaultKeySet, defaultKeyFor, mergeInNewDefaultEvents } from './events.js';
 import { clamp, esc } from './rendering.js';
-import { sendToAll, sendToGM } from './messaging.js';
+import { sendToGM } from './messaging.js';
 import { _getSeasonLabel, currentDateLabel, sendCurrentDate } from './ui.js';
 
 
@@ -845,15 +845,14 @@ export function resetToDefaults(){
   checkInstall();
   var newLabel = _worldDateLabel();
 
-  // Public, archived: this is the in-game timestamp anchor the GM scrolls
-  // back to months later. Single line, no buttons (/direct strips them).
-  var publicLine =
+  // GM-only whisper (whisper-first: `!cal send` is the single public
+  // broadcast surface). The GM gets the before/after wipe summary so they
+  // can confirm it and scroll back to it later; players aren't spammed with
+  // an unprompted reset line.
+  sendToGM(
     '<b>📅 Calendar reset.</b><br>' +
     (oldLabel ? 'Was: <i>' + esc(oldLabel) + '</i><br>' : '') +
-    'Now: <i>' + esc(newLabel) + '</i> (campaign default).';
-  sendToAll(publicLine);
-
-  // GM-only operational ack (not archived).
-  sendToGM('Calendar state wiped and reset to <i>' + esc(newLabel) +
-           '</i>. Use <code>!cal</code> to reconfigure or accept the defaults.');
+    'Now: <i>' + esc(newLabel) + '</i> (campaign default).<br>' +
+    'Use <code>!cal</code> to reconfigure or accept the defaults.'
+  );
 }

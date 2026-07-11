@@ -250,12 +250,10 @@ because they're easy to mis-scope:
 - The **boot summary** (`notifySetupStatusOnReady`, fired after
   `checkInstall` on the next `!cal` after a sandbox restart) whispers
   "Calendar Initialized" to the GM only — it never goes to the table.
-- `!cal resetcalendar` is a partial exception to "whisper-first": it
-  *does* post one public, archived line ("Calendar reset. Was: ... Now:
-  ...") as an in-game timestamp anchor, in addition to a GM-only ack.
-  That line isn't interactive and isn't gated behind `!cal send` — it's
-  a side effect of the reset command itself, not a second general
-  broadcast surface.
+- `!cal resetcalendar` whispers the GM an old→new summary ("Calendar
+  reset. Was: ... Now: ...") and nothing else — no public line. `!cal
+  send` is the single public broadcast surface with no exceptions; the
+  table isn't spammed with an unprompted reset when the GM wipes state.
 
 This is the cleanest defence against Roll20 chat spam: a 12-player
 table can each click `!cal` without flooding the room.
