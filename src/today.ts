@@ -1,6 +1,6 @@
 // Today — Combined detail from all subsystems
 import { CALENDAR_SYSTEMS, CONFIG_DEFAULTS } from './config.js';
-import { COLOR_THEMES, LABELS, SEASON_SETS, STYLES, script_name, state_name } from './constants.js';
+import { COLOR_THEMES, LABELS, STYLES, script_name, state_name } from './constants.js';
 import { _sourceAllowedForCalendar, applyCalendarSystem, applySeasonSet, defaults, ensureSettings, getAutoSuppressedSources, getCal, refreshAndSend, refreshCalendarState, resetToDefaults, resolveSourceKeyInput, sourceDisplayLabel, sourceSuppressionState, titleCase, weekLength } from './state.js';
 import { handleTokenCommand } from './token.js';
 import { colorsAPI } from './color.js';
@@ -8,7 +8,7 @@ import { _invalidateSerialCache, _isLeapMonth, fromSerial, toSerial, todaySerial
 import { DaySpec, Parse } from './parsing.js';
 import { _deliverAdditionalCalendarRange, _deliverTopLevelCalendarRange, buildAdditionalRangesCommand, buildCalendarsHtmlForSpec, defaultKeyFor, eventDisplayName, getEventColor, mergeInNewDefaultEvents, occurrencesInRange } from './events.js';
 import { button, clamp, esc, eventLineHtml, _monthRangeFromSerial } from './rendering.js';
-import { _displayMonthDayParts, _menuBox, _serialToDateSpec, _shiftSerialByMonth, additionalHubHtml, calendarSystemListHtml, currentDateLabel, dateLabelFromSerial, formalCurrentDateLabel, helpCalendarSystemMenu, helpEventColorsMenu, helpRootMenu, helpThemesMenu, manageHubHtml, nextForDayOnly, sendCurrentDate, setDate, settingsPanelHtml, stepDays, taskCardHtml, themeListHtml } from './ui.js';
+import { _displayMonthDayParts, _hemisphereAffectsActiveWorld, _menuBox, _serialToDateSpec, _shiftSerialByMonth, additionalHubHtml, calendarSystemListHtml, currentDateLabel, dateLabelFromSerial, formalCurrentDateLabel, helpEventColorsMenu, helpReadingMenu, helpRootMenu, helpThemesMenu, manageHubHtml, nextForDayOnly, sendCurrentDate, setDate, settingsPanelHtml, stepDays, taskCardHtml, themeListHtml } from './ui.js';
 import { _normalizePackedWords, _playerTodayHtml, _showDefaultCalView, cleanWho, send, whisper, whisperUi } from './commands.js';
 import { _getMoonSys, _moonLastEvent, _moonNextEvent, _moonPeakPhaseDay, _moonPhaseEmoji, _moonPhaseLabel, handleMoonCommand, invalidateMoonModel, moonEnsureSequences, moonPhaseAt } from './moon.js';
 import { getPlanarState, _getAllPlaneData, _getPlaneData, handlePlanesCommand } from './planes.js';
@@ -154,19 +154,18 @@ export function _todayAllHtml(){
     lines.join('') + btns.join(''));
 }
 
+// Only 'date.set' survives here — `!cal set` reads it directly (see the
+// `set` command below). The retired events.add / events.remove /
+// events.restore usage strings, and the usage() dispatch helper that read
+// them, were dead: every EVENT_SUB entry sets usage:null, so the gate that
+// called usage() never fired.
 export var USAGE = {
-  'events.add':     'Usage: !cal add [MM DD [YYYY] | <MonthName> DD [YYYY] | DD] NAME [#COLOR|color] (DD may be an ordinal like 1st or fourteenth)',
-  'events.remove':  'Usage: !cal remove [list | key <KEY> | series <KEY> | <name fragment>]',
-  'events.restore': 'Usage: !cal restore [all] [exact] <name...> | restore key <KEY> | restore series <KEY>',
-  'date.set':       'Usage: !cal set <Month> DD [YYYY] — Month is a real-month number (1–12) or any month name; DD may be an ordinal (1st, fourteenth). Set an intercalary festival by name: !cal set Midwinter or !cal set Growfest 3'
+  'date.set': 'Usage: !cal set <Month> DD [YYYY] — Month is a real-month number (1–12) or any month name; DD may be an ordinal (1st, fourteenth). Set an intercalary festival by name: !cal set Midwinter or !cal set Growfest 3'
 };
-
-export function usage(key, m){ whisper(m.who, USAGE[key]); }
 
 export function invokeEventSub(m, sub, args){
   var cfg = EVENT_SUB[sub];
-  if (!cfg) return whisper(m.who, 'Unknown events subcommand. Try: add | addmonthly | addyearly | remove | restore | list');
-  if (cfg.usage && (!args || args.length === 0)) return usage(cfg.usage, m);
+  if (!cfg) return whisper(m.who, 'Unknown events subcommand. Try: current | all');
   return cfg.run(m, args || []);
 }
 
@@ -193,7 +192,7 @@ export var EVENT_SUB = {
   panel: {
     usage: null,
     run: function(m, args){
-      whisper(m.who, _eventsPanelHtml(args[0] || null));
+      whisper(m.who, _eventsPanelHtml(args[0] || null, playerIsGM(m.playerid)));
     }
   },
   ranges: {
@@ -210,7 +209,10 @@ export var EVENT_SUB = {
 };
 
 // ── Events Panel ──────────────────────────────────────────────────────────
-function _eventsPanelHtml(serialArg){
+// `isGM` gates the Send-to-Players button — it fires `!cal send`, a
+// GM-only broadcast; a player who clicked it would just get the GM-only
+// error. Players still get everything else in the panel.
+function _eventsPanelHtml(serialArg, isGM?){
   var cal = getCal(), c = cal.current;
   var today = todaySerial();
 
@@ -271,7 +273,9 @@ function _eventsPanelHtml(serialArg){
   btns.push(button('◂ Prev Events','events panel ' + prevSer) + ' ');
   btns.push(button('Next Events ▸','events panel ' + nextSer));
   btns.push('</div>');
-  btns.push('<div style="margin:3px 0;">' + button('Send to Players','send ' + mobj.name + ' ' + dd.year) + '</div>');
+  if (isGM){
+    btns.push('<div style="margin:3px 0;">' + button('Send to Players','send ' + mobj.name + ' ' + dd.year) + '</div>');
+  }
 
   // Additional Ranges
   btns.push('<div style="border-top:1px solid rgba(0,0,0,.08);margin:6px 0 4px 0;"></div>');
@@ -846,7 +850,7 @@ export var commands = {
     var page = String(a[2]||'').toLowerCase();
     switch(page){
       case 'eventcolors': return helpEventColorsMenu(m);
-      case 'calendar':    return helpCalendarSystemMenu(m);
+      case 'calendar':    return helpReadingMenu(m);
       case 'themes':      return helpThemesMenu(m);
       case 'root':
       default:            return helpRootMenu(m);
@@ -863,10 +867,9 @@ export var commands = {
     var st = ensureSettings();
     function _settingsUsage(){
       return whisperUi(m.who,
-        'Usage: <code>!cal settings (group|labels|events|moons|planes|offcycle|buttons) (on|off)</code><br>'+
+        'Usage: <code>!cal settings (group|labels|moons|planes|buttons) (on|off)</code><br>'+
         '<code>!cal settings density (compact|normal)</code> &nbsp;·&nbsp; '+
-        '<code>!cal settings mode planes (calendar|list|both)</code><br>'+
-        '<code>!cal settings verbosity (normal|minimal)</code>'
+        '<code>!cal settings mode planes (calendar|list|both)</code>'
       );
     }
     // No key → the self-describing Settings panel (the button surface).
@@ -881,14 +884,6 @@ export var commands = {
       refreshAndSend();
       return whisperUi(m.who, settingsPanelHtml());
     }
-    if (key === 'verbosity'){
-      if (!/^(normal|minimal)$/.test(val)){
-        return whisperUi(m.who,'Usage: <code>!cal settings verbosity (normal|minimal)</code>');
-      }
-      st.subsystemVerbosity = val;
-      refreshAndSend();
-      return whisperUi(m.who, settingsPanelHtml());
-    }
     if (key === 'mode'){
       var sysTok = String(a[3] || '').toLowerCase();
       var modeTok = String(a[4] || '').toLowerCase();
@@ -899,15 +894,13 @@ export var commands = {
       refreshAndSend();
       return whisperUi(m.who, settingsPanelHtml());
     }
-    if (!/^(group|labels|events|moons|planes|offcycle|buttons)$/.test(key) || !/^(on|off)$/.test(val)){
+    if (!/^(group|labels|moons|planes|buttons)$/.test(key) || !/^(on|off)$/.test(val)){
       return _settingsUsage();
     }
     if (key==='group')    st.groupEventsBySource = (val==='on');
     if (key==='labels')   st.showSourceLabels    = (val==='on');
-    if (key==='events')   st.eventsEnabled       = (val==='on');
     if (key==='moons'){    st.moonsEnabled  = (val==='on'); st._moonsAutoToggle = false; }
     if (key==='planes'){  st.planesEnabled = (val==='on'); st._planesAutoToggle = false; }
-    if (key==='offcycle') st.offCyclePlanes      = (val==='on');
     if (key==='buttons')  st.autoButtons         = (val==='on');
     refreshAndSend();
     whisperUi(m.who, settingsPanelHtml());
@@ -1054,15 +1047,20 @@ export var commands = {
   }},
 
   hemisphere: { gm:true, run:function(m, a){
+    // Gate on whether the wrapper actually shifts this world's displayed
+    // seasons by hemisphere — most worlds don't, so flipping the setting
+    // there was a false-success no-op (CLAUDE.md: season plumbing stays,
+    // but the control shouldn't claim an effect it doesn't have).
+    if (!_hemisphereAffectsActiveWorld()){
+      return whisper(m.who,
+        'Hemisphere has no effect on this world — its season labels don’t vary by hemisphere.');
+    }
     var sub = String(a[2]||'').toLowerCase();
     if (sub !== 'north' && sub !== 'south'){
       var st3 = ensureSettings();
       var cur = st3.hemisphere || CONFIG_DEFAULTS.hemisphere;
-      var sv3 = st3.seasonVariant || CONFIG_DEFAULTS.seasonVariant;
-      var entry3 = SEASON_SETS[sv3] || {};
-      var aware = entry3.hemisphereAware ? 'yes' : 'no (current season set is not hemisphere-aware)';
       return whisper(m.who,
-        'Current hemisphere: <b>'+esc(cur)+'</b>. Hemisphere-aware: '+aware+'.<br>'+
+        'Current hemisphere: <b>'+esc(cur)+'</b>.<br>'+
         button('North','hemisphere north')+' '+button('South','hemisphere south')
       );
     }
@@ -1187,7 +1185,7 @@ export var commands = {
         '<div style="margin:4px 0;"><b>Manage Event Sources</b></div>'+
         '<div style="overflow-x:auto;max-width:100%;"><table style="'+tableStyle+'">'+head+rows+'</table></div>'+
         '<div style="font-size:.8em;opacity:.7;margin-top:4px;">'+
-        'Order = priority. Top source sets cell color. Hide/show acts like a bulk toggle for each source&#39;s default events, and hidden entries still appear in the main hide/show list.'+
+        'Order = priority. Top source sets cell color. Hide/show acts like a bulk toggle for each source&#39;s default events.'+
         '</div>'
       );
     }
@@ -1236,7 +1234,7 @@ export var commands = {
         return !sourceKeySet[defaultKeyFor(e.month, norm, e.name)];
       });
       refreshCalendarState(true);
-      sendChat(script_name, '/w gm Hidden "'+esc(name)+'" source events in the shared hide/show list.', null, { noarchive: true });
+      sendChat(script_name, '/w gm Hidden "'+esc(name)+'" source events.', null, { noarchive: true });
     }
 
     function enableSource(name){

@@ -7,7 +7,7 @@ import { _daysBeforeMonthInYear, _daysBeforeYear, _invalidateSerialCache, _isGre
 import { monthIndexByName } from './parsing.js';
 import { compareEvents, eventKey, eventsAPI, getEventColor, getEventsFor, isDefaultEvent, renderAPI } from './events.js';
 import { _ordinal, clamp, esc, formatDateLabel } from './rendering.js';
-import { _displayMonthDayParts, _subsystemIsVerbose, _subsystemVerbosityValue, currentDateLabel, setDate, stepDays } from './ui.js';
+import { _displayMonthDayParts, currentDateLabel, setDate, stepDays } from './ui.js';
 import { _todayAllHtml } from './today.js';
 import { notifySetupStatusOnReady } from './setup.js';
 import { register } from './boot-register.js';
@@ -101,10 +101,6 @@ if (typeof globalThis !== 'undefined' && (globalThis as any).__CALENDAR_TEST_MOD
     moonPhaseAt:         moonPhaseAt,
     moonEnsureSequences: moonEnsureSequences,
     MOON_SYSTEMS:        MOON_SYSTEMS,
-
-    // verbosity
-    _subsystemIsVerbose:    _subsystemIsVerbose,
-    _subsystemVerbosityValue: _subsystemVerbosityValue,
 
     // today-view helpers
     _todayAllHtml:          _todayAllHtml,
