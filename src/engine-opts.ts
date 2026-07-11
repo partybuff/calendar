@@ -90,38 +90,21 @@ export function serialToCalendarDate(serial: number): EngineCalendarDate {
   };
 }
 
-/** Read the campaign-imported lunar anchors and emit the engine's
- *  `PhaseOptions` shape. Returns `{}` when no token has been applied
- *  (engine treats absent opts as canon). */
+/** Moon phase options for engine queries. Canon-only: moons always use the
+ *  engine's standard default-seed anchors — GM in-Roll20 anchor overrides
+ *  were cut (CLAUDE.md: planes/moons are canon-only, no overrides). The engine
+ *  treats `{}` as canon. A future live token may set world/date/variant/
+ *  palette, but the standard set from the default seed is the only anchor
+ *  pathway; there is no per-campaign override. */
 export function getMoonOpts(): PhaseOptions {
-  const root = (state as { [key: string]: unknown })[state_name] as
-    | Record<string, unknown>
-    | undefined;
-  const imported = (root?.imported || {}) as {
-    lunarAnchors?: Record<string, EngineMoonAnchor>;
-    krynnAnchor?: EngineCalendarDate | null;
-  };
-  const opts: { anchors?: Readonly<Record<string, EngineMoonAnchor>>; krynnAnchor?: EngineCalendarDate } = {};
-  if (imported.lunarAnchors && Object.keys(imported.lunarAnchors).length) {
-    opts.anchors = imported.lunarAnchors;
-  }
-  if (imported.krynnAnchor) {
-    opts.krynnAnchor = imported.krynnAnchor;
-  }
-  return opts;
+  return {};
 }
 
-/** Read the campaign-imported planar anchors and emit the engine's
- *  `PlanePositions` shape. Always returns an object so callers can pass
- *  it directly (engine handles `{}` identically to `undefined`). */
+/** Plane positions for engine queries. Canon-only: planes always use the
+ *  engine's canonical positions; the GM anchor-override pathway was cut
+ *  (see getMoonOpts). The engine handles `{}` identically to `undefined`. */
 export function getPlanePositions(): PlanePositions {
-  const root = (state as { [key: string]: unknown })[state_name] as
-    | Record<string, unknown>
-    | undefined;
-  const imported = (root?.imported || {}) as {
-    planarAnchors?: Record<string, number>;
-  };
-  return imported.planarAnchors || {};
+  return {};
 }
 
 /** Re-export the engine's `planes` namespace so wrapper modules don't

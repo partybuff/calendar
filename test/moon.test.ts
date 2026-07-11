@@ -2,10 +2,11 @@
 // math (sequence buffer, festival nudges, anti-phase coupling, associated
 // plane phase pulls, 60-day history cache, illumination-coverage threshold
 // model) was deleted when those concerns moved into
-// `@partybuff/calendar-engine`. The Dragonlance Night-of-the-Eye anchor
-// is now sourced from `state.imported.krynnAnchor`, written by the token
-// consumer in `src/token.ts`; there is no Roll20-side `!cal moon eye`
-// command any more.
+// `@partybuff/calendar-engine`. Moons and planes are canon-only: they always
+// use the engine's standard default-seed anchors. GM in-Roll20 anchor
+// overrides (once threaded from `state.imported`) were cut, so a token's
+// lunar/planar/krynn anchor fields never affect what players see; there is no
+// Roll20-side `!cal moon eye` command any more.
 import { describe, it } from "node:test";
 import { strictEqual as assertEquals, ok as assert } from "node:assert/strict";
 import { holidays as engineHolidays } from "@partybuff/calendar-engine";
@@ -75,50 +76,49 @@ describe("Moon read API (engine-backed)", () => {
     );
   });
 
-  it("krynnAnchor from a setup token relocates Night of the Eye", () => {
-    freshInstall();
-    applyCalendarSystem("dragonlance", "standard");
-    const overrideSerial = toSerial(346, 6, 14);
-
-    applyToken({
-      v: 1,
-      world: "dragonlance",
-      date: { kind: "month", year: 346, monthIndex: 0, day: 1 },
-      krynnAnchor: { kind: "month", year: 346, monthIndex: 6, day: 14 },
-    });
-
-    for (const moonName of ["Solinari", "Lunitari", "Nuitari"]) {
-      const v = _moonPeakPhaseDay(moonName, overrideSerial);
-      assertEquals(v, "full", `${moonName} should be full on the overridden Night of the Eye`);
-    }
+  it("krynnAnchor from a setup token is IGNORED — moons stay canon-only", () => {
+    const probe = toSerial(346, 6, 14);
+    const phasesWith = (withAnchor: boolean) => {
+      freshInstall();
+      applyCalendarSystem("dragonlance", "standard");
+      applyToken({
+        v: 1,
+        world: "dragonlance",
+        date: { kind: "month", year: 346, monthIndex: 0, day: 1 },
+        ...(withAnchor
+          ? { krynnAnchor: { kind: "month" as const, year: 346, monthIndex: 6, day: 14 } }
+          : {}),
+      });
+      return ["Solinari", "Lunitari", "Nuitari"].map((n) => _moonPeakPhaseDay(n, probe)).join(",");
+    };
+    // The anchor-override pathway was cut: a token's krynnAnchor must not
+    // shift the canon Night-of-the-Eye alignment. Phases are identical
+    // whether or not the token carries the override.
+    assertEquals(phasesWith(true), phasesWith(false),
+      "krynnAnchor override must not change canon moon phases");
   });
 
-  it("planar opts pass through: planarAnchors slide the canon Fernia cycle", async () => {
-    // Bridge test: writing planarAnchors into state.imported (via the
-    // token apply path) must affect engine `planes.stateOf` queries via
-    // the wrapper's `getPlanarState`. The legacy wrapper had its own
-    // cycle math; this test pins the engine pass-through behavior.
-    freshInstall();
+  it("planarAnchors from a setup token are IGNORED — planes stay canon-only", async () => {
+    // The GM plane-position override pathway was cut (CLAUDE.md: planes are
+    // canon-only, no overrides). Writing planarAnchors via the token apply
+    // path must NOT affect engine `planes.stateOf` queries.
     const { getPlanarState } = await import("../src/planes.js");
-    const targetSerial = toSerial(998, 6, 14);
-    const baseline = getPlanarState("Fernia", targetSerial);
-    assert(baseline, "expected a baseline Fernia state");
-
-    applyToken({
-      v: 1,
-      world: "eberron",
-      date: { kind: "month", year: 998, monthIndex: 0, day: 1 },
-      planarAnchors: { fernia: 28 },
-    });
-
-    const shifted = getPlanarState("Fernia", targetSerial);
-    assert(shifted, "expected a shifted Fernia state");
-    // The 28-day position offset shifts the cycle relative to the same
-    // serial; daysIntoPhase has to differ (either phase changed entirely
-    // or its progress within the phase changed).
-    const differs =
-      baseline.phase !== shifted.phase ||
-      baseline.daysIntoPhase !== shifted.daysIntoPhase;
-    assert(differs, "planarAnchors should change Fernia's state on the target serial");
+    const target = toSerial(998, 6, 14);
+    const stateWith = (withAnchor: boolean) => {
+      freshInstall();
+      applyToken({
+        v: 1,
+        world: "eberron",
+        date: { kind: "month", year: 998, monthIndex: 0, day: 1 },
+        ...(withAnchor ? { planarAnchors: { fernia: 28 } } : {}),
+      });
+      return getPlanarState("Fernia", target);
+    };
+    const canon = stateWith(false);
+    const withAnchor = stateWith(true);
+    assert(canon && withAnchor, "expected Fernia state both ways");
+    assertEquals(withAnchor.phase, canon.phase, "planarAnchors must not change Fernia's phase");
+    assertEquals(withAnchor.daysIntoPhase, canon.daysIntoPhase,
+      "planarAnchors must not change Fernia's progress");
   });
 });
