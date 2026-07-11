@@ -530,32 +530,53 @@ export function yearHTMLFor(targetYear, dimActive){
   return html.join('');
 }
 
-export function formatDateLabel(y, mi, d, includeYear){
-  var cal=getCal();
-  var st  = ensureSettings();
-  var mobj = cal.months[mi] || {};
-
-  var lbl;
+// Shared, unescaped (monthName, day, label) fragment for a given month/day —
+// the single source of truth for the per-dateFormatStyle branching
+// (ordinal_of_month / month_day_year / nights / plain). Consumed by:
+//   - formatDateLabel below, which escapes the fragment at its HTML boundary
+//     and appends ", <year> <era>" when requested.
+//   - ui.ts's _displayMonthDayParts, which returns the fragment as-is
+//     (unescaped) because its callers build !cal command specs
+//     (_serialToDateSpec) and some HTML titles feed it through their own
+//     esc() call — see callers in commands.ts/today.ts/events.ts.
+// Deliberately UNESCAPED here; see the esc() calls in formatDateLabel.
+export function _dateLabelFragment(mi, day){
+  var cal = getCal();
+  var st = ensureSettings();
+  var m = cal.months[mi] || {};
   var fmt = dateFormatFor(st.calendarSystem);
+  var monthName = String(m.name || (mi + 1));
   if (fmt === 'ordinal_of_month'){
     // "16th of Eleasis" / "Midwinter" (festival name only for intercalary)
-    lbl = mobj.isIntercalary
-      ? esc(mobj.name)
-      : (_ordinal(d) + ' of ' + esc(mobj.name));
-  } else if (fmt === 'month_day_year'){
-    // "January 14" / "February 29" for banner leap day
-    if (mobj.isIntercalary && String(mobj.name||'') === 'Leap Day'){
-      lbl = 'February 29';
-    } else {
-      lbl = esc(mobj.name)+' '+d;
+    if (m.isIntercalary){
+      return { monthName: monthName, day: day, label: monthName };
     }
-  } else if (fmt === 'nights'){
-    // "21st Night of the Twelfth Moon" (Barovia)
-    lbl = _ordinal(d) + ' Night of the ' + esc(mobj.name);
-  } else {
-    lbl = esc(mobj.name)+' '+d;
+    return { monthName: monthName, day: day, label: _ordinal(day) + ' of ' + monthName };
   }
+  if (fmt === 'month_day_year' && m.isIntercalary && String(m.name||'') === 'Leap Day'){
+    // "February 29" for the banner leap day slot.
+    return { monthName: 'February', day: 29, label: 'February 29' };
+  }
+  if (fmt === 'nights'){
+    // "21st Night of the Twelfth Moon" (Barovia)
+    return { monthName: monthName, day: day, label: _ordinal(day) + ' Night of the ' + monthName };
+  }
+  if (fmt === 'month_day_year'){
+    // "January 14" — Month Day, per the DateFormatStyle doc ("January 14,
+    // 2024 CE"). The banner leap-day slot returned above. Before the
+    // date-label dedup, _displayMonthDayParts rendered this "14 January"
+    // (Day Month) while formatDateLabel rendered "January 14"; the two now
+    // agree on the documented order (Gregorian is the only such world; this
+    // changes its Today banner / panel titles from day-first to month-first).
+    return { monthName: monthName, day: day, label: monthName + ' ' + day };
+  }
+  // Plain fallback for any world whose style isn't matched above.
+  return { monthName: monthName, day: day, label: String(day) + ' ' + monthName };
+}
 
+export function formatDateLabel(y, mi, d, includeYear){
+  var frag = _dateLabelFragment(mi, d);
+  var lbl = esc(frag.label);
   if (includeYear) lbl += ', '+esc(String(y))+' '+LABELS.era;
   return lbl;
 }

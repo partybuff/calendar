@@ -6,7 +6,7 @@ import { popColorIfPresent, resolveColor, sanitizeHexColor } from './color.js';
 import { _isLeapMonth, _nextActiveMi, _prevActiveMi, fromSerial, regularMonthIndex, toSerial, todaySerial, weekdayIndex } from './date-math.js';
 import { DaySpec, Parse, monthIndexByName } from './parsing.js';
 import { _addConcreteEvent, buildCalendarsHtmlForSpec, defaultKeyFor, eventDisplayName, eventIndexByKey, markSuppressedIfDefault, occurrencesInRange } from './events.js';
-import { _decKey, _eventSeriesKey, _ordinal, button, clamp, esc, formatDateLabel, int, mbP, monthEventsHtml, navP, swatchHtml } from './rendering.js';
+import { _dateLabelFragment, _decKey, _eventSeriesKey, button, clamp, esc, formatDateLabel, int, mbP, monthEventsHtml, navP, swatchHtml } from './rendering.js';
 import { send, sendToAll, sendToGM, sendUiToGM, warnGM, whisper, whisperUi } from './commands.js';
 import { MOON_HISTORY_DAYS, _getMoonSys, _moonNextThresholdEntry, _moonPeakPhaseDay, _moonPhaseEmoji, _moonPhaseSpanSuffix, captureMoonHistoryWindow, moonEnsureSequences, moonPhaseAt, pruneMoonHistory, resetMoonHistory } from './moon.js';
 import { PLANE_PHASE_EMOJI, PLANE_PHASE_LABELS, _getAllPlaneData, _isGeneratedNote, _planarNotableToday, _planarYearDays, getPlanarState } from './planes.js';
@@ -153,33 +153,12 @@ export function _legendLine(items){
   return '<div style="font-size:.76em;opacity:.55;margin:4px 0 6px 0;">Legend: '+items.map(esc).join(' · ')+'</div>';
 }
 
+// Thin wrapper over rendering.ts's shared, unescaped fragment core — see
+// _dateLabelFragment for the format-style branching (single source of truth,
+// shared with formatDateLabel). Kept unescaped: callers here build !cal
+// command specs (_serialToDateSpec) and other command-facing text, not HTML.
 export function _displayMonthDayParts(mi, day){
-  var cal = getCal();
-  var st = ensureSettings();
-  var m = cal.months[mi] || {};
-  var fmt = dateFormatFor(st.calendarSystem);
-  if (fmt === 'ordinal_of_month'){
-    if (m.isIntercalary){
-      return { monthName: String(m.name || (mi + 1)), day: day, label: String(m.name || (mi + 1)) };
-    }
-    return {
-      monthName: String(m.name || (mi + 1)),
-      day: day,
-      label: _ordinal(day) + ' of ' + String(m.name || (mi + 1))
-    };
-  }
-  if (fmt === 'month_day_year' && m.isIntercalary && String(m.name||'') === 'Leap Day'){
-    return { monthName: 'February', day: 29, label: 'February 29' };
-  }
-  if (fmt === 'nights'){
-    var moonName = String(m.name || (mi + 1));
-    return { monthName: moonName, day: day, label: _ordinal(day) + ' Night of the ' + moonName };
-  }
-  return {
-    monthName: String(m.name || (mi + 1)),
-    day: day,
-    label: String(day) + ' ' + String(m.name || (mi + 1))
-  };
+  return _dateLabelFragment(mi, day);
 }
 
 export function _serialToDateSpec(serial){
