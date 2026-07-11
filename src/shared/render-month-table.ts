@@ -54,6 +54,23 @@ export type PureMonthTableInput = {
 };
 
 
+/* ── Column-count / weekday-row decision ─────────────────────────────────
+ * Single source of truth for "how many grid columns does a month table (or
+ * boundary strip) span, and should the weekday-label header row render."
+ * Weekless calendars (Barovia) supply an empty weekday-labels array; they
+ * still lay out on a fixed 7-column week block, with no label row. Every
+ * table/strip builder (renderPureMonthTable, rendering.ts::openMonthTable,
+ * events.ts's boundary-strip renderer) derives its column count from this
+ * so a future weekless-style calendar only needs this function updated. */
+
+export type MonthTableColumns = { cols: number; showWeekdayRow: boolean };
+
+export function monthTableColumns(weekdayLabels: readonly unknown[] | null | undefined): MonthTableColumns {
+  var len = (weekdayLabels && weekdayLabels.length) || 0;
+  return { cols: len || 7, showWeekdayRow: len > 0 };
+}
+
+
 /* ── Internal helpers (mirrored from rendering.ts / color.ts) ──────── */
 
 function _pureEventDotsHtml(events: PureCellEvent[], dotOnly?: boolean): string {
@@ -137,9 +154,8 @@ function _headerBarsHtml(bars: PureHeaderBar[], weekdayCount: number): string {
 /* ── Main entry point ──────────────────────────────────────────────── */
 
 export function renderPureMonthTable(input: PureMonthTableInput): string {
-  // Weekless calendars (Barovia) supply no weekday labels; cells are still laid
-  // out on a 7-column week, so default the column count and skip the label row.
-  var wdCount = input.weekdayLabels.length || 7;
+  var mtc = monthTableColumns(input.weekdayLabels);
+  var wdCount = mtc.cols;
   var monthHeaderStyle = colorsAPI.styleMonthHeader(input.monthColor);
 
   var html: string[] = [];
@@ -153,7 +169,7 @@ export function renderPureMonthTable(input: PureMonthTableInput): string {
   html.push('</div></th></tr>');
 
   // Weekday headers — omitted entirely when the calendar has no named weekdays.
-  if (input.weekdayLabels.length){
+  if (mtc.showWeekdayRow){
     html.push('<tr>');
     for (var w = 0; w < input.weekdayLabels.length; w++){
       html.push('<th style="'+STYLES.th+'">'+esc(input.weekdayLabels[w])+'</th>');

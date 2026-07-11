@@ -3,7 +3,7 @@ import { CONTRAST_MIN_CELL, LABELS, STYLES, script_name, state_name } from './co
 import { colorForMonth, ensureSettings, getCal, refreshAndSend, titleCase, weekLength } from './state.js';
 import { _eventDotsHtml, applyBg, applyPlaneFill, colorsAPI, resolveColor } from './color.js';
 import { _isGregorianLeapSlotMonthObj, _isLeapMonth, daysPerYear, fromSerial, toSerial, todaySerial, weekStartSerial, weekdayIndex } from './date-math.js';
-import { renderPureMonthTable, PureCell, PureCellEvent, PureDayCell } from './shared/render-month-table.js';
+import { monthTableColumns, renderPureMonthTable, PureCell, PureCellEvent, PureDayCell } from './shared/render-month-table.js';
 import { DaySpec, Parse } from './parsing.js';
 import { _firstWeekdayOfMonth, _tokenizeRangeArgs, autoColorForEvent, buildCalendarsHtmlForSpec, dayFromOrdinalWeekday, eventDisplayName, eventKey, eventsListHTMLForRange, getEventColor, getEventsFor, isDefaultEvent, mergeInNewDefaultEvents, parseUnifiedRange, sortEventsByPriority, stripRangeExtensionDynamic } from './events.js';
 import { send, sendToAll, whisper } from './messaging.js';
@@ -117,7 +117,8 @@ export function openMonthTable(mi, yearLabel, abbrHeaders?){
   var wd = useAbbr ? weekdayHeaderLabels(true) : cal.weekdays;
   // Weekless calendars (Barovia) carry no named weekdays; the grid still lays
   // out on a 7-column week, so default the span and drop the label row.
-  var cols = wd.length || 7;
+  var mtc = monthTableColumns(wd);
+  var cols = mtc.cols;
 
   var head = [
     '<table style="'+STYLES.table+'">',
@@ -127,7 +128,7 @@ export function openMonthTable(mi, yearLabel, abbrHeaders?){
       '<span style="float:right;">'+esc(String(yearLabel!=null?yearLabel:cur.year))+' '+LABELS.era+'</span>',
     '</div>',
     '</th></tr>',
-    (wd.length ? '<tr>'+ wd.map(function(d){ return '<th style="'+STYLES.th+'">'+esc(d)+'</th>'; }).join('') +'</tr>' : '')
+    (mtc.showWeekdayRow ? '<tr>'+ wd.map(function(d){ return '<th style="'+STYLES.th+'">'+esc(d)+'</th>'; }).join('') +'</tr>' : '')
   ].join('');
 
   return { html: head, monthColor: monthColor };
