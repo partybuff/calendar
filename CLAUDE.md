@@ -29,8 +29,9 @@ below, treat it as legacy and confirm with the user before extending it.
 
 ### In scope
 
-- Date math across eight worlds: Eberron, Faerûn (Harptos), Greyhawk,
-  Dragonlance (Krynn), Exandria, Mystara, Birthright, Gregorian.
+- Date math across nine worlds: Eberron, Faerûn (Harptos), Greyhawk,
+  Dragonlance (Krynn), Exandria, Mystara, Barovia (Ravenloft), Birthright,
+  Gregorian.
 - Moon **phases** (illumination + label only). No sky position, altitude,
   azimuth, eclipse math, or "long shadows" framing.
 - Eberron planar events surfaced in the Planar Current/All panels.
@@ -40,10 +41,18 @@ below, treat it as legacy and confirm with the user before extending it.
   (`src/worlds/index.ts::eventPacksFromEngine`); this repo hosts NO
   event data. Fidelity to the engine's own occurrence math is enforced
   by `test/engine-events-parity.test.ts`. The wrapper has no
-  add/remove/list GM commands. The `!cal token` import pipeline is NOT
-  operational and is not planned — do not build against it.
-- GM commands: set world, set date, advance/retreat, paste a setup
-  token, broadcast the today panel.
+  add/remove/list GM commands.
+- GM commands: set date (`!cal set`), advance/retreat, paste a setup
+  token (`!cal token`), broadcast the today panel (`!cal send`), plus
+  live settings (`!cal manage` / `settings` / `theme` / `calendar` /
+  `hemisphere` / `source`). There is no `set world` — switching worlds
+  is not a live setting; it goes through `!cal resetcalendar` (re-runs
+  the one-step world picker) or a `!cal token` paste. The `!cal token`
+  pipeline IS operational (`src/token.ts`) — it applies world / date /
+  variant / palette only. It does NOT carry lunar/planar anchor
+  overrides: moons and planes are canon-only, so the wrapper always
+  calls the engine with an empty opts bag, and any anchor fields on an
+  incoming token are silently ignored (not validated, not stored).
 - Whisper-first UX. `!cal` is the only chat entry point and every
   reply is whispered to the caller; `!cal send` (GM-only) is the
   single public broadcast surface.

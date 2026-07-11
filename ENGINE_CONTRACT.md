@@ -63,9 +63,12 @@ must be present in `worlds.list()` and resolvable via `worlds.get(id)`:
 | `greyhawk`    | Greyhawk               | Has moons (Luna, Celene)           |
 | `dragonlance` | Dragonlance (Krynn)    | Has moons (Solinari, Lunitari, Nuitari) |
 | `exandria`    | Exandria               | Has moons (Catha, Ruidus)          |
-| `mystara`     | Mystara                | Has moons (Matera)                 |
-| `birthright`  | Birthright (Cerilia)   | Has moons (Lirovka)                |
-| `gregorian`   | Earth (Gregorian)      | No moons in engine output (see §5) |
+| `mystara`     | Mystara                | Has moons (Matera, Patera)         |
+| `birthright`  | Birthright (Cerilia)   | Has moons (Aelies)                 |
+| `barovia`     | Ravenloft (Barovia)    | Weekless; has moons (one); no planar cycles |
+| `gregorian`   | Earth (Gregorian)      | No planar cycles (see §5.4)        |
+
+Nine worlds as of the wrapper's `src/worlds/overlays.ts` `OVERLAY_ORDER`. Barovia was added to the wrapper after this contract's v0.1.0/§8.x baseline and predates any dedicated revision entry here — treat the table above, not the change-log below, as current.
 
 A world id is a stable string. Adding more worlds later is non-breaking.
 
@@ -79,20 +82,23 @@ are illustrative only and may have rounding drift.
 
 ## 4. Module layout
 
-The wrapper imports from these subpaths. Names are proposed; the engine
-author can adjust as long as the shapes survive.
+As shipped, the wrapper imports runtime values (`worlds`, `moons`, `planes`,
+`colors`, `palettes`, `date`) from the **root barrel** — every `src/*.ts`
+call site does `import { ... } from '@partybuff/calendar-engine'`, not a
+per-system subpath. The originally proposed subpath layout below never
+became the wrapper's actual import style; tree-shaking concerns didn't
+materialize enough to justify it.
 
 ```
-@partybuff/calendar-engine/worlds      → world definitions + registry
-@partybuff/calendar-engine/date        → serial date math
-@partybuff/calendar-engine/moons       → moon phase calculation
-@partybuff/calendar-engine/planes      → Eberron planar events
-@partybuff/calendar-engine/colors      → color utilities + hex helpers
-@partybuff/calendar-engine             → barrel re-export of the above
+@partybuff/calendar-engine             → root barrel; every runtime import goes through here
+@partybuff/calendar-engine/moons       → TYPE-ONLY import (PhaseOptions) in src/engine-opts.ts
+@partybuff/calendar-engine/planes      → TYPE-ONLY import (PlanePositions) in src/engine-opts.ts
 ```
 
-The wrapper prefers subpath imports so that unused systems (e.g., planes
-for non-Eberron games) tree-shake cleanly.
+The two subpath imports that do exist in the wrapper (`src/engine-opts.ts`)
+are `import type` only — they pull TypeScript types for the opts-bag
+arguments, not runtime code. If the engine still ships `/worlds`, `/date`,
+`/colors` subpaths, the wrapper doesn't use them.
 
 ## 5. API surface
 
@@ -244,6 +250,14 @@ The wrapper needs moon **phases** only. Not sky position, not altitude,
 not azimuth, not eclipse math. Anything related to where a moon sits in
 the sky belongs to the web app side.
 
+**Current wrapper usage (post PR #198):** the wrapper always calls
+`moons.phaseOf` / `nextEvent` with an empty opts bag —
+`src/engine-opts.ts::getMoonOpts()` unconditionally returns `{}`. The
+anchor model, `MoonAnchor`, and `krynnAnchor` described below are part
+of the engine's API surface but are never populated from Roll20 — there
+is no in-Roll20 GM anchor override. Read this subsection as "what the
+engine supports," not "what the wrapper currently sends."
+
 ```ts
 interface Moon {
   readonly key: string;            // stable, lowercase, e.g. 'olarune'
@@ -367,10 +381,19 @@ consumer-supplied anchor for the affected moon.
 web app:** sky position, altitude, azimuth, hour angle, eclipse detection,
 sun-relative geometry. The wrapper does not import these.
 
-**Long Shadows note:** the Roll20 wrapper *does* surface the Eberron Long
-Shadows gobble effect via `MoonPhase.longShadows`. Long Shadows is a canon
-event anchored at Vult 26–28 (with a tapered window — distance 0: ±3 days,
-distance 1: ±2 days, distance ≥2: ±1 day).
+**Long Shadows note — stale as of the current wrapper.** This subsection
+originally said the Roll20 wrapper surfaces the Eberron Long Shadows
+gobble effect via `MoonPhase.longShadows`. It no longer does:
+`src/moon.ts::moonPhaseAt` destructures the engine's `MoonPhase` into
+`{ illum, waxing, label, isFull, isNew }` only — `longShadows` is
+dropped, and no UI in `src/` reads it. CLAUDE.md lists "no sky position,
+altitude, azimuth, eclipse math, or 'long shadows' framing" as
+explicitly out of scope. Long Shadows is a canon event anchored at Vult
+26–28 (tapered window — distance 0: ±3 days, distance 1: ±2 days,
+distance ≥2: ±1 day) that the *engine* still bakes into its phase math
+(so a New moon lands genuinely on the gobble day, unconditionally, for
+every consumer), but the flag that would let a renderer call it out
+specially is not consumed here.
 
 **Mechanic — cycle-shift, not override.** For each affected moon, the
 engine ships *pre-programmed one-cycle nudges* — the same internal
@@ -392,12 +415,17 @@ per-year shift amounts are all canon and ship with the engine.
 
 ### 5.4 Planes (Eberron only)
 
-The Roll20 wrapper surfaces planar events as entries in the **events**
-list — not as their own subsystem. So the engine only needs to expose
-"what planes are active on this date" and "when does the next phase change
-happen." No subsystem-level queries, no randomization, no generated
-drifts. Per-campaign anchor offsets (one number per plane) are accepted
-via the optional `positions` argument; everything else is canon.
+Corrected from the original v0.1.0 framing: the Roll20 wrapper surfaces
+planar phases as their **own subsystem** — dedicated Planar Current / All
+panels (`!cal planar current`, `!cal planar all [year]`, plus `!cal
+planes`), separate from the events list and separately gated to
+Eberron-only. The Today dashboard also shows a compact planar line to
+the GM. The engine still only needs to expose "what planes are active on
+this date" and "when does the next phase change happen" — no subsystem-
+level queries beyond that, no randomization, no generated drifts. The
+`positions` argument exists on the engine API for per-campaign anchor
+offsets, but the wrapper always calls with `positions = {}` (canon-only,
+per PR #198 — see §9); nothing in the shipped wrapper populates it.
 
 ```ts
 type PlanarPhase = 'coterminous' | 'remote' | 'neutral';
@@ -412,6 +440,10 @@ interface Plane {
     readonly coterminous: string;  // GM-facing one-liner
     readonly remote: string;
   };
+  readonly canonicalNote?: string; // GM-only flavor line; wrapper reads this
+                                    // as `ps.plane.canonicalNote` (engine ≥0.39.0;
+                                    // undefined-safe on older) and shows it only
+                                    // to the GM in the Planar panels.
 }
 
 interface PlanarState {
@@ -622,40 +654,65 @@ revision lands both in the engine and reshapes the moons API.
 
 ## 9. Reference: what the wrapper does with this
 
-For grounding. None of this affects the contract.
+For grounding. None of this affects the contract. Superseded by
+**PR #196–#203** (the "long remediation" — see `HISTORY.md`): moons and
+planes went canon-only, the token dropped its anchor fields, and several
+GM command families changed. This section is corrected to match; the
+change-log entries in §8.1/§8.2 above are left as a historical record of
+what the *engine* API can do, which is broader than what the *wrapper*
+now uses (see §5.3/§5.4 notes).
 
-- **State persistence:** Roll20 wrapper persists `{ worldId, currentDate,
-  variant, palette, lunarAnchors, planarAnchors, viewPreferences,
-  schemaVersion }` in `state.PartyBuffCalendar`. There are no
-  `customEvents` — event content is engine canon only, configured per-
-  campaign via packs that the web app gates and the Roll20 surface
-  shows wholesale (no per-pack toggle in Roll20).
-- **GM commands:** `!cal set date <date>`, `!cal advance [N]`,
+- **State persistence:** the Roll20 wrapper persists calendar/settings
+  state (world, current date, variant, palette, per-source suppression,
+  setup status) in `state.PartyBuffCalendar`. There is no
+  `lunarAnchors` / `planarAnchors` / `imported` slot any more — moons and
+  planes are canon-only (the engine opts bags are always called with
+  `{}`), so anchor data was write-only and was swept from persisted
+  state in PR #203. There are no `customEvents` — event content is
+  engine canon only, generated from `world.holidays` at render time.
+- **GM commands (current):** `!cal set <dateSpec>`, `!cal advance [N]`,
   `!cal retreat [N]`, `!cal token <paste>`, `!cal resetcalendar`,
-  `!cal help`. The `!cal event` / `!cal source` / `!cal theme` /
-  `!cal variant` / `!cal seasons` families from the pre-revision
-  script are retired; their configuration moves entirely to the web
-  app and flows in via §10 tokens.
-- **Views:** today, month (with adjacent shoulder week), rolling 3-
-  month, year, next year, previous year, lunar (full moons list),
-  planar (planes list). Button-first UX; `!cal` is the only chat
-  entry point.
+  `!cal manage`, `!cal settings ...`, `!cal theme ...`, `!cal calendar
+  <system> [variant]` (name-variant swap only — switching *worlds* is
+  not live), `!cal hemisphere ...`, `!cal source ...`, `!cal send
+  [range]` (the only public broadcast). `!cal theme` and `!cal source`
+  are live GM commands, not retired — README.md's Command Reference is
+  the source of truth for the full current surface.
+- **Views:** Today dashboard, `show`/`send` month and year ranges,
+  Events Current/All, Lunar Current/All, Planar Current/All (Eberron
+  only). Button-first UX; `!cal` is the only chat entry point, `!cal
+  send` the only public broadcast.
 - **Player surface:** read-only views, no admin controls. No knowledge
   tiers — full information for all players.
 
 ## 10. Cross-script token format
 
+**Revised by PR #198 / #203 — this section describes the token as the
+wrapper actually parses and applies it today.** The original §10 (below
+the v0.1.0/§8.1 baseline) additionally specified `lunarAnchors`,
+`krynnAnchor`, and `planarAnchors` fields. Those fields are **not part
+of the wrapper's token contract any more**: PR #198 cut the in-Roll20
+anchor-override pathway (moons and planes are canon-only — the engine
+opts bags are always called with `{}`), and PR #203 removed the
+now-write-only `state.PartyBuffCalendar.imported` slot that used to
+persist them. `src/token.ts` documents this explicitly: *"a token
+carries world/date/variant/palette only. Any `lunarAnchors` /
+`krynnAnchor` / `planarAnchors` on an incoming payload are silently
+ignored (not validated, not stored)."* If a producer still emits those
+fields, the Roll20 consumer accepts the token but drops them on the
+floor — no error, no effect.
+
 The Roll20 wrapper and the `@partybuff/party-buff` web app share
-`@partybuff/calendar-engine` and therefore compute dates, moons,
-and planes identically given the same anchors. To let GMs configure
-their calendar in the web app — where setup-heavy operations (anchors,
-variants, palettes) have a real UI — and apply that configuration to
-a running Roll20 game, both sides agree on a portable token format.
+`@partybuff/calendar-engine` and therefore compute dates, moons, and
+planes identically. To let GMs configure their calendar in the web
+app — where setup-heavy operations (variant, palette pick) have a real
+UI — and apply that configuration to a running Roll20 game, both sides
+agree on a portable token format.
 
 The token carries **setup only** — never campaign content. Custom
-events, custom moons, notes, lore, weather, and forecast gating all
-stay on the web. The token is a stateless snapshot the Roll20 side
-can replay over its `state.PartyBuffCalendar` blob.
+events, notes, lore, weather, and forecast gating all stay on the web.
+The token is a stateless snapshot the Roll20 side can replay over its
+`state.PartyBuffCalendar` blob.
 
 ### 10.1 Wire format
 
@@ -665,78 +722,71 @@ of a UTF-8 JSON object with this shape:
 ```ts
 interface Token {
   readonly v: 1;                                          // schema version; consumers reject v > supported
-  readonly world: WorldId;                                // see §3
+  readonly world: WorldId;                                // see §3 — wrapper also accepts its own registry key (e.g. 'faerunian')
   readonly date: CalendarDate;                            // see §5.1
   readonly variant?: string;                              // calendar variant key (e.g. 'standard') — absent = world default
   readonly palette?: string;                              // month-header palette key — absent = world default
-  readonly lunarAnchors?: Readonly<Record<string, MoonAnchor>>;   // see §5.3 — invalid on Dragonlance (use krynnAnchor)
-  readonly krynnAnchor?: CalendarDate;                    // Dragonlance only; kind: 'month'; see §5.3
-  readonly planarAnchors?: Readonly<Record<string, number>>;     // see §5.4 (PlanarPositions); Eberron only
 }
 ```
 
-Optional fields absent from the token mean "use the world's default";
-do not interpret absence as "clear the receiver's existing setting."
+No `lunarAnchors`, `krynnAnchor`, or `planarAnchors` fields — see the
+note at the top of §10. Optional fields absent from the token mean
+"use the world's default"; do not interpret absence as "clear the
+receiver's existing setting."
 
 Producers SHOULD omit fields equal to the world's default rather than
-include them, so tokens stay small (~200–400 chars base64 typical) and
+include them, so tokens stay small (~100–200 chars base64 typical) and
 forward-compatible (a future default change automatically applies to
 old tokens).
 
 ### 10.2 Validation rules
 
-A consumer (Roll20 wrapper, or any third party) MUST reject a token
-when:
+The Roll20 wrapper (`src/token.ts::parseToken`) rejects a token when:
 
 1. `v` is not an integer or is greater than the consumer's supported
    schema version. Error: *"this token requires a newer version of
    the calendar."*
-2. `world` is not a known `WorldId`. Error: *"unknown world '<id>'."*
-3. `world` doesn't match the consumer's currently-configured world.
-   The consumer MAY prompt to switch worlds, but MUST NOT silently
-   overwrite.
-4. `date` is not valid for the declared world (out-of-range
-   `monthIndex`, `day` exceeds `daysInMonth` / `daysInIntercalary`,
-   unknown `intercalaryKey`).
-5. `variant` is non-empty but isn't a known variant for the world.
-6. `palette` is non-empty but isn't a known palette key.
-7. Any `lunarAnchors` key isn't a moon known to the world.
-8. Any `lunarAnchors` entry's date is invalid for the world, or its
-   `phase` is not `'full'` or `'new'`.
-9. Any `planarAnchors` key isn't a plane known to the world. Planes
-   are Eberron-only; non-Eberron tokens with a non-empty
-   `planarAnchors` are invalid.
-10. The decoded payload is not valid JSON or is not a plain object.
-11. `krynnAnchor` is present on a non-Dragonlance token, or its
-    `kind` is not `'month'`, or any of its `year` / `monthIndex` /
-    `day` fields are missing / wrong type / out-of-range for the
-    world's calendar.
-12. A Dragonlance token carries `lunarAnchors` with any non-Krynn moon
-    key (Dragonlance has no other moons in canon), OR with Krynn keys
-    (`solinari` / `lunitari` / `nuitari`) that disagree on date or
-    phase (the triad must conjunct as one event), OR carries both
-    `krynnAnchor` and `lunarAnchors` (ambiguous intent — pick one).
-    Consumers MAY accept a Dragonlance token whose `lunarAnchors`
-    triplicates the same conjunction across all three Krynn keys
-    (the legacy producer shape) and translate it to `krynnAnchor`
-    on application; this is a transition affordance for v=1.
+2. The decoded payload is not valid JSON, or is not a plain object.
+3. `world` is not a string, or doesn't resolve against the wrapper's
+   world registry (`resolveWorldKey` — accepts either the wrapper's
+   own key, e.g. `'faerunian'`, or the underlying engine `WorldId`,
+   e.g. `'faerun'`). Error: *"unknown world '<id>'."*
+4. `date` is missing, not an object, has an unknown `kind`, a
+   non-integer `year`, or a non-positive-integer `day`; a `kind:
+   'month'` date additionally needs a non-negative integer
+   `monthIndex`; a `kind: 'intercalary'` date needs a non-empty
+   `intercalaryKey` string.
+5. `variant` is present but not a string.
+6. `palette` is present but not a string.
 
-Validation failures surface the engine's human-readable error
-message to the GM (via `/w gm` for Roll20).
+Unlike the v0.1.0 baseline, the wrapper does **not** require the
+token's `world` to match the currently-configured world before
+applying — `!cal token <paste>` is explicitly the tool for switching
+world/date/variant/palette in one shot, GM-only. It also does not
+validate `variant`/`palette` against the world's known keys at parse
+time (bad values fail later, softly — see §10.3).
+
+Validation failures whisper the error message to the GM.
 
 ### 10.3 Application semantics
 
-When applying a validated token to a running calendar state:
+`src/token.ts::applyToken`, when applying a validated token to a
+running calendar state:
 
-1. Overwrite `worldId`, `variant`, `palette`, `lunarAnchors`,
-   `planarAnchors`, `currentDate` with the token's values. For fields
-   absent from the token, fall back to the world's defaults (NOT to
-   the receiver's pre-existing value).
-2. Do **not** touch non-setup state — view preferences, command
-   history, etc.
-3. Surface two GM-whispered confirmations:
+1. Resolve `world` to the wrapper's registry key; fail with no
+   partial writes if `applyCalendarSystem` rejects it.
+2. Set `calendarSystem` / `calendarVariant` from `world` / `variant`
+   (variant absent → the world's default variant).
+3. Set `colorTheme` from `palette` (absent → `null`, which falls back
+   to the variant's default palette at render time).
+4. Set the current date from `date` (month or intercalary; an
+   intercalary key with no matching structural slot in the target
+   world is silently skipped — the world/variant change still
+   applies, and the GM can `!cal set` the date manually).
+5. Do **not** touch non-setup state.
+6. Whisper two GM confirmations:
    - *"New configuration loaded. Use `!cal` to begin."*
-   - If the previous `currentDate` differs from the token's `date`:
+   - If the previous current-date label differs from the new one:
      *"The previous date was X. The new date is Y."* — so the GM
      can `!cal set` the old date back if they want.
 
@@ -762,10 +812,14 @@ the same release window. Mixed-version pastes fail loud, not silent.
 
 ---
 
-*Status: v0.1.0 baseline with §8.1 + §8.2 revisions. §8.2 engine
-implementation (opts-bag refactor, `krynnAnchor`, Therendor↔Barrakas
-coupling) shipped in `@partybuff/calendar-engine@0.2.4`. Roll20
-wrapper consumption follows in this repo: token validator updates
-land with this revision; the moon/plane query call sites (PR 2c)
-follow once the engine bump merges. Subsequent contract revisions
-ride in their own PRs.*
+*Status: v0.1.0 baseline with §8.1 + §8.2 revisions on record below as
+history. The wrapper's `package.json` currently pins
+`@partybuff/calendar-engine@^0.44.0` — several engine releases past the
+`0.2.4` this document originally tracked. §9 and §10 above are corrected
+to match the wrapper as shipped after the PR #196–#203 remediation
+(canon-only moons/planes, anchor-free token, nine worlds). §8.1/§8.2
+are left as an unedited historical change-log of engine-side capability;
+they describe what the engine API can accept, not what the Roll20
+wrapper currently sends it (the wrapper always passes empty opts —
+see §5.3/§5.4). Treat §3, §5.4, §9, and §10 as current; treat §8.1/§8.2's
+anchor/krynnAnchor narrative as superseded on the wrapper side only.*
