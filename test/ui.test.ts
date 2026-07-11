@@ -18,9 +18,9 @@ function setSerial(serial: number) {
 describe("Task-focused UI", () => {
   it("routes transient GM UI through noarchive but archives public broadcasts", () => {
     // sendUi* paths are transient interactive panels (buttons re-render the
-    // panel) — they should never clutter Roll20's chat archive. Public
-    // broadcasts (!cal send, reset announcement) ARE the campaign's in-game
-    // timestamp anchor and must persist in chat history.
+    // panel) — they should never clutter Roll20's chat archive. The public
+    // broadcast (`!cal send`, the single public surface) IS the campaign's
+    // in-game timestamp anchor and must persist in chat history.
     freshInstall();
     sendUiToGM("<div>GM menu</div>");
     sendToAll("<div>Story-facing content</div>");
