@@ -1,6 +1,6 @@
 {
   "name": "partybuff-calendar",
-  "version": "0.9.17",
+  "version": "0.9.18",
   "private": true,
   "type": "module",
   "scripts": {
@@ -16,6 +16,6 @@
     "typescript": "^5.7.0"
   },
   "dependencies": {
-    "@partybuff/calendar-engine": "^0.42.0"
+    "@partybuff/calendar-engine": "^0.44.0"
   }
 }
