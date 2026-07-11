@@ -16,38 +16,57 @@ view to players. Distributed as a single `calendar.js` paste artifact.
 ### In scope
 
 - **Worlds:** Eberron, Faerûn (Harptos), Greyhawk, Dragonlance (Krynn),
-  Exandria, Mystara, Birthright, Gregorian. One active world per
+  Exandria, Mystara, Barovia (Ravenloft — weekless, "Nth Night of the
+  Mth Moon" date format), Birthright, Gregorian. Nine worlds
+  (`src/worlds/overlays.ts::OVERLAY_ORDER`). One active world per
   campaign.
 - **Date math:** advance, retreat, set, parse, format, weekday lookup,
   leap years, intercalary days. All delegated to the engine.
 - **Moon phases:** illumination and label per moon per day. Output only;
   no sky position, altitude, azimuth, eclipses, or shadow framing.
   Full and new days are inflection points (single days, never spans).
-  Anti-phase coupling between Therendor and Barrakas is engine-owned
-  canon (Eberron). Dragonlance Night-of-the-Eye is the only Krynn
-  anchor mechanism (no per-moon Krynn anchors).
+  Anti-phase coupling between Therendor and Barrakas, and Dragonlance's
+  Night-of-the-Eye conjunction, are always-on engine canon (Eberron /
+  Krynn respectively) — the wrapper triggers neither directly and has
+  no per-moon anchor override of any kind; it always calls the engine
+  with an empty opts bag.
 - **Events** (canon-only — no user input):
   - Built-in canonical event packs per world (e.g., Sovereign Host
-    feasts for Eberron, calendar festivals for Harptos). Packs ship
-    with the engine and arrive at the wrapper via the setup token.
+    feasts for Eberron, calendar festivals for Harptos), generated from
+    engine `world.holidays` at render time. Packs ship with the engine
+    package itself, not with a token — `!cal token` carries
+    world/date/variant/palette only and has nothing to do with event
+    content.
   - Eberron planar events surfaced as their own subsystem alongside
     events and lunar (canon cycles only — no GM seeds, no drift, no
     multi-day spans).
 - **GM commands** (typed):
-  - `!cal set world <id>` — switch worlds.
-  - `!cal set date <date>` — set the current date.
-  - `!cal advance` / `!cal retreat` — step one day.
-  - `!cal send` — public-broadcast the today panel.
-  - `!cal token <paste>` — apply a setup token.
-  - `!cal resetcalendar` — clear state.
+  - `!cal set <dateSpec>` — set the current date. There is no `!cal set
+    world <id>` — switching to a *different* world is not a live
+    setting (it changes month/moon/holiday data); it goes through
+    `!cal resetcalendar` (re-runs the one-step world picker) or a
+    `!cal token` paste. `!cal calendar <system> [variant]` only swaps
+    the name-variant *within* the current world.
+  - `!cal advance [N]` / `!cal retreat [N]` — step N days (default 1).
+  - `!cal send [range]` — the single public broadcast. Bare = today
+    panel; with a range, that month/year.
+  - `!cal token <paste>` — apply a setup token (world/date/variant/
+    palette only — no anchor fields; see `ENGINE_CONTRACT.md` §10).
+  - `!cal resetcalendar` — wipe state; setup runs again.
+  - `!cal manage` / `!cal settings` / `!cal theme` / `!cal calendar` /
+    `!cal hemisphere` / `!cal source` — the GM configuration surface
+    (name variants, palettes, per-source event visibility, density,
+    subsystem toggles). Live settings, not part of first-run setup.
 - **Player + GM commands** (typed; whispered back to caller):
-  - `!cal` — today panel (minical + summary + buttons).
+  - `!cal` — today dashboard (minical + summary + buttons).
   - `!cal additional` — subsystem hub.
   - `!cal events current` / `events all [yyyy]`.
   - `!cal lunar current` / `lunar all [yyyy]`.
   - `!cal planar current` / `planar all [yyyy]` (Eberron only).
   - `!cal show [month] [year]` — calendar view, no today summary.
-  - `!cal help` — command reference.
+  - `!cal event <name>` — single-event detail card.
+  - `!cal help` — docs-only reference card (status line + short pages),
+    not a full command list.
 - **UX model:** whisper-first. Every chat reply is whispered to the
   caller. The single public broadcast is `!cal send`, GM-only. Panel
   navigation is a chain of button clicks that issue further `!cal …`
@@ -68,12 +87,17 @@ These are explicitly cut. Do not re-add without a written reversal.
   suppression, manifest zones, Ring of Siberys lighting.
 - Multi-day full/new moon spans. Engine collapses each to its
   inflection day; the wrapper does not stretch them back out.
-- 60-day moon history caches. Phases compute on-demand from anchors.
+- 60-day moon history caches. Phases compute on-demand, closed-form,
+  from the engine's canon reference — the wrapper has no anchor state
+  to cache against.
 - Festival "nudges" that shifted lunar event dates near holidays. The
-  engine is anchor-pure; festival proximity is not a phase input.
-- Per-moon Dragonlance anchors. The Night-of-the-Eye triad is the only
-  canonical mechanism. The token validator rejects per-moon Krynn
-  anchors.
+  engine is canon-pure; festival proximity is not a phase input.
+- Any in-Roll20 moon/plane anchor override, per-moon or otherwise
+  (Eberron, Dragonlance's Night-of-the-Eye, or any other world). The
+  wrapper always calls the engine with an empty opts bag. A token's
+  `lunarAnchors` / `krynnAnchor` / `planarAnchors` fields (if a
+  producer still sends them) are silently ignored on parse — not
+  validated, not stored, not applied.
 - GM custom events. Event content is canon-pack only. There is no
   add / remove / edit surface in the wrapper.
 - Roll20 handouts as a render surface. Handout creation is disabled.
@@ -134,27 +158,31 @@ See `ENGINE_CONTRACT.md` for exact shapes.
 
 ### 3.2 Wrapper-owned (lives in `state.PartyBuffCalendar`)
 
+**No anchor persistence.** Moons and planes are canon-only (PR #198):
+the engine opts bags are always called with `{}`. There is no
+`imported` / `lunarAnchors` / `krynnAnchor` / `planarAnchors` slot —
+PR #203 removed the last of that shape from persisted state (it was
+write-only; nothing read it). The idealized shape below intentionally
+carries no anchor fields:
+
 ```ts
 interface PersistentState {
-  version: number;            // bump on breaking shape change; migrate on read
-  worldId: WorldId;           // engine WorldId
+  worldId: WorldId;           // engine WorldId (wrapper registry key)
   currentDate: CalendarDate;  // engine CalendarDate
   variant?: string;           // calendar variant key; absent = world default
   palette?: string;           // month-header palette key; absent = world default
-  imported?: ImportedSetup;   // populated by `!cal token`; see §3.3
   setup: {
     status: 'uninitialized' | 'dismissed' | 'in_progress' | 'complete';
   };
 }
-
-interface ImportedSetup {
-  lunarAnchors: Readonly<Record<string, MoonAnchor>>; // per-moon (non-Dragonlance worlds)
-  krynnAnchor: CalendarDate | null;                   // Dragonlance only; canonical NoE anchor
-  planarAnchors: Readonly<Record<string, number>>;    // Eberron only; per-plane day offset
-  appliedAt: number;                                  // epoch ms
-  schemaVersion: number;                              // token's `v`
-}
 ```
+
+The shipped `state.ts` shape is a legacy-flavored superset of this
+(`calendar: { current, months, weekdays, events }`, `settings: {...}`,
+`suppressedDefaults`, source-priority lists, UI density, etc.) rather
+than this literal interface — this section states the *data the
+wrapper is allowed to own*, not the exact on-disk layout. Treat the
+list of rules below as binding regardless of the concrete shape:
 
 Rules:
 - Keep state small. Roll20 serializes to JSON on every write.
@@ -162,13 +190,9 @@ Rules:
   Recompute on every render.
 - No `customEvents` slot — event content is canon-only and ships with
   the engine.
-- Versioned schema. Read path runs migrations; write path always emits
-  the current shape.
+- No anchor slot of any kind — see the callout above.
 - On unknown `worldId`, fall back to the engine's default and log; do
   not crash.
-- `imported.krynnAnchor` is the canonical Dragonlance anchor; legacy
-  triplicated-per-moon tokens are translated on the apply path so
-  PR 2c only has one Dragonlance code path to support.
 
 ### 3.3 Events
 
@@ -215,9 +239,23 @@ Carry these forward; they shaped every previous attempt.
 
 ### 5.1 Whisper-first
 
-Every chat reply is whispered to the caller. The only public broadcast
-is `!cal send` (GM-only), which sends the same panel `!cal` would have
-whispered, this time to the room. Players cannot broadcast anything.
+Every interactive chat reply is whispered to the caller. `!cal send`
+(GM-only) is the only public broadcast a GM *chooses* to send — it
+posts the same panel `!cal` would have whispered, this time to the
+room, non-interactively (`/direct` strips buttons). Players cannot
+broadcast anything.
+
+Two things are GM-facing whispers, not broadcasts, worth calling out
+because they're easy to mis-scope:
+- The **boot summary** (`notifySetupStatusOnReady`, fired after
+  `checkInstall` on the next `!cal` after a sandbox restart) whispers
+  "Calendar Initialized" to the GM only — it never goes to the table.
+- `!cal resetcalendar` is a partial exception to "whisper-first": it
+  *does* post one public, archived line ("Calendar reset. Was: ... Now:
+  ...") as an in-game timestamp anchor, in addition to a GM-only ack.
+  That line isn't interactive and isn't gated behind `!cal send` — it's
+  a side effect of the reset command itself, not a second general
+  broadcast surface.
 
 This is the cleanest defence against Roll20 chat spam: a 12-player
 table can each click `!cal` without flooding the room.
@@ -229,12 +267,16 @@ A whispered panel with these stacked sections:
 1. **Minical** — current month, day cells with stacked event chips,
    today highlighted. Each chip has a `title=""` tooltip (desktop-only;
    mobile players read the full info via the subsystem panels).
-2. **Today summary** — long date, weekday, season, next-event hint
-   ("Next event: Sun's Blessing in 3 days").
-3. **GM-only button row** (suppressed when caller isn't GM):
-   `[Retreat] [Advance] [Send]`. Each emits `!cal retreat` /
-   `!cal advance` / `!cal send`.
-4. **Public button row**: `[Additional] [Help]`. Emits
+2. **Today summary** — date, season, today's events, and any moon at a
+   notable phase (full/new today or within 2 days). GM only,
+   additionally: notable planar states.
+3. **Views row**: one-click buttons into Events / Moons / Planes (world-
+   gated — Planes only on Eberron, Moons only if enabled).
+4. **Month stepper**: `‹ Prev` / `This Month` / `Next ›` / `Year`.
+5. **GM-only button row** (suppressed when caller isn't GM):
+   `[Retreat] [Advance] [Send] [Manage]`. Each emits `!cal retreat` /
+   `!cal advance` / `!cal send` / `!cal manage`.
+6. **Public button row** (players only): `[Additional] [Help]`. Emits
    `!cal additional` / `!cal help`.
 
 ### 5.3 `!cal send` — public broadcast
@@ -317,38 +359,51 @@ Transition line shape:
 Eberron-only. Same structure as `lunar all`: per-month section,
 chronological transitions inside.
 
-### 5.6 `!cal show [month] [year]`
+### 5.6 `!cal show [range]`
 
 Whispered. Pure calendar grid — no today summary, no next-event
-hint, no GM row. Defaults: current month, current year. Useful for
-planning ahead without leaving the current date.
-
-`show` is mentioned in `!cal help` but has no button. Typed-only.
+hint, no GM row. Bare `show` (or top-level `!cal` with a trailing
+range token, e.g. `!cal next month`) defaults to the current month.
+The month stepper (`‹ Prev` / `This Month` / `Next ›` / `Year`) rides
+under every `show` output and issues further `show ...` commands, so
+this view is button-navigable, not typed-only.
 
 ### 5.7 `!cal help`
 
-Whispered. Lists every command in plain text (no buttons — Help is
-the reference card). Includes the typed-only GM admin commands:
-`!cal set world <id>`, `!cal set date <date>`, `!cal token <paste>`,
-`!cal resetcalendar`.
+Whispered, docs-only reference — **not** a full command list. A status
+line (current date, active world/variant, non-default overrides) plus
+short reference cards ("Reading the Calendar", "Themes", "Event
+Colors") and `Dashboard` / `Additional` buttons. It does not enumerate
+typed commands or GM admin syntax; the GM configuration surface lives
+in `!cal manage`, and this file / `README.md`'s Command Reference are
+the actual command lists.
 
 ### 5.8 Setup
 
-GM-only first-run wizard. Persistent setup state: `uninitialized`,
-`dismissed`, `in_progress`, `complete`. Campaigns with populated
+GM-only, one step. Persistent setup state: `uninitialized`,
+`dismissed`, `in_progress` (unused by the current one-step flow, kept
+for schema compatibility), `complete`. Campaigns with populated
 calendar data but no setup marker auto-migrate to `complete` (no
 onboarding interruption).
 
-The web-app setup token (§10 of `ENGINE_CONTRACT.md`) is the primary
-configuration channel. The wizard exists for the no-token case:
+There is no multi-step wizard. The GM picks a world from the welcome
+card (`!cal setup pick <world>`); that world's canonical variant,
+date, and palette apply immediately — no follow-up questions about
+season, hemisphere, theme, or event sources. The web-app setup token
+(§10 of `ENGINE_CONTRACT.md`) is the richer configuration channel for
+GMs who want more than "just pick a world":
 
-1. World (8 choices).
-2. Starting date — accept "use world default" or a custom date via the
-   same parser used by `!cal set date`.
+1. World (9 choices) — picking it applies the world's canonical
+   default date, variant, and palette in the same step. There is no
+   second question. A GM who wants a specific starting date sets it
+   afterward with `!cal set <dateSpec>`.
 
 That's it. Era labels, color themes, hemisphere choices, season
-models, event source ordering — all dropped. The engine returns one
-canonical representation per world; the wrapper renders it.
+models, event source ordering — all dropped from *setup*; several
+(theme, hemisphere, source visibility) are still available afterward
+as live `!cal manage` settings, just not asked about during onboarding.
+The engine returns one canonical representation per world; the wrapper
+renders it.
 
 Public chat must never receive setup prompts. If a player types `!cal`
 before setup is complete, the wrapper whispers a polite waiting
@@ -402,28 +457,28 @@ across renders. Tooltips on each chip show the event name and source.
 
 ## 8. Open decisions
 
-Flagged for resolution. None block first cut.
+Historical — the first four have since been resolved by shipped code;
+left here so the reasoning isn't re-litigated. Only #5 is still live.
 
-1. **`!cal show` navigation arrows.** The bare `show` panel is
-   static — no today summary, no GM row. Should it carry
-   `[← Prev month] [Next month →]` buttons for ergonomics, or stay
-   typed-only? Lean: keep it static. Adding navigation drifts toward
-   re-implementing `!cal` without the today framing.
-2. **`!cal lunar current` ordering.** Sort moons alphabetically, by
-   cycle days, or by world-canonical order (the `World.moons` array)?
-   Lean: world-canonical (matches the engine's intent).
-3. **Today summary "next event" hint scope.** Should "next event"
-   include lunar/planar transitions, or only canon-holiday entries?
-   Lean: only holidays — lunar/planar each have their own current
-   panel and a holiday hint reads cleaner.
-4. **Year boundary on lunar/planar "all" spillover.** The events
-   panels spill into nearby months including across year boundaries;
-   `lunar all yyyy` / `planar all yyyy` are explicitly year-scoped.
-   Confirm: no spillover for the year-scoped panels.
-5. **Mobile-tooltip parity.** Roll20 chat preserves `title=""` for
-   desktop. Mobile players don't get tooltips. Acceptable cost per
-   the user — no expand-on-click fallback. Documented here so the
-   choice isn't re-litigated.
+1. **`!cal show` navigation arrows.** *Resolved: yes.* The month
+   stepper (`‹ Prev` / `This Month` / `Next ›` / `Year`) rides under
+   every `show` output.
+2. **`!cal lunar current` ordering.** *Resolved: world-canonical.*
+   `_lunarCurrentHtml` iterates `sys.moons` in the order the world
+   registry (engine `world.moons`) supplies.
+3. **Today summary "next event" hint scope.** *Moot.* The shipped
+   Today dashboard has no generic "next event" countdown line — it
+   shows today's events, notable moon phases, and (GM) notable planar
+   states directly, not a forward-looking hint.
+4. **Year boundary on lunar/planar "all" spillover.** *Resolved: no
+   spillover.* `_lunarAllHtml` / `_planarAllHtml` scope strictly to
+   `[yearStart, yearEnd]`; `_eventsCurrentHtml` / `_planarCurrentHtml`
+   (the *current*, not *all*, panels) are the ones with week-length
+   spillover across month/year boundaries.
+5. **Mobile-tooltip parity.** Still open. Roll20 chat preserves
+   `title=""` for desktop. Mobile players don't get tooltips.
+   Acceptable cost per the user — no expand-on-click fallback.
+   Documented here so the choice isn't re-litigated.
 
 ---
 

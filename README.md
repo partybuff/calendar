@@ -6,9 +6,9 @@ A Roll20 API script for managing a fantasy campaign calendar with:
 	- moon phase tracking
 	- planar movements (Eberron setting)
 
-**Supports:** Eberron, Forgotten Realms, Greyhawk, Dragonlance, Exandria, Mystara, Birthright, Earth (Gregorian)
+**Supports:** Eberron, Forgotten Realms, Greyhawk, Dragonlance, Exandria, Mystara, Ravenloft (Barovia), Birthright, Earth (Gregorian)
 
-This script is the in-game companion to the [Party Buff](https://github.com/partybuff) calendar app — the web app handles the wide-canvas planning surface (rich weather, time-of-day, theming, custom events) while Roll20 is the at-the-table view. Future versions will let the two link so dates and events sync between them automatically.
+This script is the in-game companion to the [Party Buff](https://github.com/partybuff) calendar app — the web app handles the wide-canvas planning surface (rich weather, time-of-day, theming, custom events) while Roll20 is the at-the-table view. `!cal token <paste>` carries a one-way setup snapshot (world, date, variant, palette) from the web app into a running Roll20 session; it does not carry campaign content like custom events or weather.
 
 ---
 
@@ -26,7 +26,7 @@ Create these as Roll20 macros for quick-bar access:
 | Advance 1 | `!cal advance 1` | GM only — advance one day |
 | Retreat 1 | `!cal retreat 1` | GM only — retreat one day |
 | Send Month | `!cal send month` | GM only — broadcast month to all |
-| Help | `!cal help` | Command reference |
+| Help | `!cal help` | Docs-only reference |
 
 **Tip:** Mark GM-only macros as token actions so they appear in your GM toolbar but not for players.
 
@@ -158,19 +158,16 @@ authenticates installs of the private engine package.
 <details open>
 <summary>Show the basic startup flow</summary>
 
-On a brand-new campaign, only the GM sees the first-run prompt:
-> Welcome to Calendar! It looks like this is the first time Calendar has been used in this game. Would you like to initialize it?
-
-Choose `Yes` to run the onboarding wizard or `No` to dismiss it for now. The GM can always resume by typing `!cal`.
+On a brand-new campaign, only the GM sees the first-run prompt: a "Welcome to Party Buff's Roll20 Calendar" card with one button per supported world. Setup is a single step — pick a world and it's live immediately, seeded with that world's canonical variant, date, and palette. There is no follow-up wizard (no season/theme/hemisphere/event-source questions). The GM can dismiss the prompt (`!cal setup dismiss`) and come back to it later by typing `!cal`.
 
 After setup is complete:
 - `!cal` opens the compact Today dashboard
-- `!cal help` opens the task-focused root help menu
+- `!cal help` opens the docs-only root help menu (status line + short reference cards — it is not a full command list)
 - `!cal show month` and `!cal send month` open or share the full month grid
 
 Players who use `!cal` before the GM finishes setup get a waiting message instead of setup or admin controls.
 
-All script-emitted Roll20 chat output currently uses `noarchive`.
+Whispers and GM-only acks use `noarchive` and don't persist in the chat log. Public broadcasts — `!cal send` and the calendar-reset announcement — are **not** `noarchive`; they post normally so the table has an in-game timestamp trail to scroll back to.
 
 </details>
 
@@ -183,27 +180,28 @@ All script-emitted Roll20 chat output currently uses `noarchive`.
 <details>
 <summary>Show navigation layout and button meanings</summary>
 
-The default `!cal` and `!cal today` views open a compact Today panel instead of dropping straight into the full month stack.
+The default `!cal` and `!cal today` views open a compact Today dashboard instead of dropping straight into the full month stack.
 
-The GM panel shows:
-- Current date (bold)
+Everyone sees:
+- The current month's minical, current date, and season
 - Today's events/holidays
-- Notable moon phases (ascendant, new, full)
-- Notable planar states (coterminous, remote)
-- Step buttons (⬅ / ➡), Send Today View to Players, and an Additional Options menu for subsystem detail views and admin
+- Notable moon phases (full, new, or arriving within 2 days)
+- A one-click row into the Events / Moons / Planes panels
+- The month stepper (‹ Prev / This Month / Next › / Year)
 
-Players see the same informational sections without step/admin controls.
+GM-only, additionally:
+- Notable planar states (coterminous, remote, or transitioning within 2 days)
+- A control row: Retreat, Advance, Send (the public broadcast), Manage (the setup hub)
 
-Use `!cal show ...` or `!cal send ...` when you want the traditional month/year calendar render. The root help menu (`!cal help`) is also task-focused and includes prompt buttons for `!cal set`, `!cal add`, `!cal addmonthly`, `!cal addyearly`, `!cal moon on`, `!cal planes on`, and `!cal send`.
+Players get an Additional / Help row instead of the GM control row.
+
+Use `!cal show ...` or `!cal send ...` when you want the traditional month/year calendar render. `!cal help` is a docs-only reference card (status line + short "Reading the Calendar" / "Themes" / "Event Colors" pages) — it does not list every command or carry prompt buttons for typed input. The month stepper, `Additional` (Events/Lunar/Planar panels), and — for the GM — `Manage` (setup, sources, themes, broadcast, reset) are the actual navigation surface; almost everything is a button click, not typed input.
 
 </details>
 
-### Persistent Player Surfaces
+### Handouts
 
-- Roll20 handout creation and refresh are temporarily disabled.
-- Editable handout/reference content lives in `Handouts/Events.md`, `Handouts/Lunar.md`, and `Handouts/Planar.md`.
-- The script still supports the live Moon Phase page. Bind an existing page named `Moon Phase`, or bind any other existing page by name with the moon page commands below.
-- Player movement to the live Moon page is explicit: the page redraws automatically when state changes, but players are only moved there when the GM uses `!cal moon page show`.
+Roll20 handout creation is disabled — the script never calls `createObj`/`set('notes', ...)` on a handout. The Markdown files under `Handouts/` (`Events.md`, `Lunar.md`, `Planar.md`) are reference notes for the GM to read or paste manually; they are not wired into the script.
 
 [Return to Table of Contents](#table-of-contents)
 
@@ -217,15 +215,12 @@ Use `!cal show ...` or `!cal send ...` when you want the traditional month/year 
 - Individual cells within the minical are color-filled on the day of an event.
 - For days with multiple events, small colored dots appear beneath the numbered date.
 - Each cell can be hovered over with a mouse to show a tooltip containing the event information.
-### Pre-Included
-* All published holidays are pre-included in the script. Each is assigned a color.
-* Every pre-included holiday can be individually toggled on or off.
-* Additionally, holidays are grouped by Source, allowing for entire categories to be toggled on or off.
-* Switching between calendar systems applies source compatibility through automatic source suppression, while GM manual source disables persist across calendar-system changes.
-### GM Generated
-- GMs can create their own events, which are then stored in state.
-- There is no limit to the number of events created. They can be deleted as necessary.
-- If no color is assigned at creation, a random color is assigned.
+- `!cal event <name>` whispers a detail card for a single event: its date(s), source, and lore, read live from the engine (the wrapper hosts no event text of its own).
+
+### Canon-only, source-managed
+- Every event on the calendar is generated from the active world's engine data (`world.holidays`) at render time — the script does not store, add, or edit event content. There is no `!cal event add` / `remove` / `restore` family; that was retired when events moved to canon-pack-only.
+- Holidays are grouped by **source** (e.g. Eberron's Sharn, Sovereign Host, Dark Six, Silver Flame, Stormreach packs). `!cal source list` shows every source for the active world; `!cal source disable <name>` / `!cal source enable <name>` hide or restore an entire source's events; `!cal source up` / `down` reorders source priority (the top-ranked source on a date sets that day's cell color).
+- Switching calendar systems applies source compatibility through automatic suppression (a source that doesn't belong to the new world is hidden), while GM manual source disables persist across calendar-system changes.
 
 </details>
 
@@ -240,31 +235,16 @@ Use `!cal show ...` or `!cal send ...` when you want the traditional month/year 
 
 The script models the sky as a physical system rather than flavor-only text. Moon brightness, movement, nighttime lighting, and everything else all derive from explicit numbers. The goal is to create a constantly advancing game-world state that requires little GM intervention, and generates useful mechanics and information for D&D.
 
-### Observer Model
+### Phase model
 
-- The model cares about **apparent sky geometry.**
-- The script does **not** track latitude, longitude, or time zones.
-- It does not make a declared cosmological stance. It does not worry about sidereal orbital periods, nor the motion of distant stars or constellations (for now). 
-- Sky reports are intentionally local and practical: they answer "what do we see where we are?" instead of simulating a full global observatory model.
-- Time is presented as broad play-facing buckets such as early hours, morning, afternoon, evening, and night.
-- Inclination matters mainly for **where** a moon appears in the sky and **how often** it can line up for crossings or eclipses; it is not treated as a second weather engine.
+The moon system is **phases only** — illumination and a phase label per moon per day. There is no sky position, altitude, azimuth, eclipse detection, or "long shadows" framing; none of that ships to Roll20 (it's out of scope for this surface — see `CLAUDE.md`).
 
-In practice, the sky model is optimized for play-facing observables: phase, brightness, apparent motion, and dramatic alignments. It is meant to answer "what can the characters notice tonight?" rather than produce a full latitude-by-latitude astronomy simulator.
-### Moons
+- Phase math is engine-owned and canon-only. There is no GM anchor override in Roll20: every moon uses the engine's standard reference date, and the GM cannot re-anchor a moon to a chosen full/new date from chat.
+- `Full` and `New` are single-day **inflection points** — the exact day the engine's phase math crosses that point, not a percentage-illumination threshold. A moon is never "Full" for a multi-day span.
+- Players and the GM see identical moon information. There are no hidden or GM-only moons, and no visibility windows gated by knowledge tier — any per-moon "hidden from players" flavor text in a sourcebook is not modeled as a mechanic here.
+- The Today dashboard highlights any moon that's Full or New today (or arriving within 2 days). `!cal moon` (or `!cal lunar current`) shows every moon's current phase, synodic period, and last/next inflection; `!cal lunar all [year]` lists every Full/New across a year.
 
-Lunar calendars are classic, and mechanically relevant for nighttime lighting.
-
-Moon phases are intentionally flexible as a narrative tool. GMs can anchor any moon to a full or new phase on a chosen date, and the script then continues forward using the moon's regular motion from that anchor.
-
-| System | Moon | Synodic Period | Diameter | Distance | Inclination | Eccentricity | Albedo | Epoch Anchor |
-| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
-| Earth | Luna | 29.53 days | 2,159 mi | 238,855 mi | 5.14° | 0.0549 | 0.12 | 2021-01-28 (full moon) |
-| Faerûn | Selûne | 30.44 days | 2,000 mi | 183,000 mi | 5.1° | 0.054 | 0.25 | 1372-01-01 (full at midnight Hammer 1, 1372 DR) |
-| Eberron | 12 moons | Mixed | Mixed | Mixed | Mixed | Mixed | Mixed | 998-01-01 default seed anchor |
-
-- **Faerûn tilt note:** Selûne's inclination is retained for consistent sky geometry and future-proofing, even in a one-moon system.
-
-Setting-specific moon data (orbital parameters, lore, and cosmological features) is documented under each setting in [Supported Settings](#supported-settings).
+Setting-specific moon rosters (names, titles, synodic periods) are documented under each setting in [Supported Settings](#supported-settings).
 
 </details>
 
@@ -276,15 +256,15 @@ Setting-specific moon data (orbital parameters, lore, and cosmological features)
 <details>
 <summary>Show planar alignment model</summary>
 
-The planar subsystem tracks Planes of Existence and their alignment cycles. In this system, a plane can be **coterminous**, **remote**, or **neither**. The specific planes and cycle structures are setting-dependent — see [Supported Settings](#supported-settings) for details.
+The planar subsystem tracks Eberron's Planes of Existence and their alignment cycles. A plane is **coterminous**, **remote**, or **neutral**. Eberron is the only world with planar data — the panels and the Today dashboard's planar line are hidden on every other world.
 
 **Coterminous** planes strengthen their associated traits.
 
 **Remote** planes suppress or invert those same traits.
 
-Planar events are canon-anchored — the cycles follow published setting material. The script surfaces them as entries in the events list.
+Planar phases are canon-anchored, read live from the engine — the wrapper carries no GM-tunable seeds, no anchor overrides, no off-cycle generation, and no plane suppression. What the engine says is coterminous/remote is what everyone sees.
 
-When a GM uses `!cal planes send ...`, players receive a non-interactive summary and the GM receives the full interactive panel back as a whisper. All of those messages currently use `noarchive`.
+`!cal planes` (or `!cal planar current` / `!cal planar all [year]`) shows the panels. There is no `!cal planes send` — the only public broadcast surface is `!cal send`, which appends whatever's active today to the shared broadcast.
 
 </details>
 
@@ -337,7 +317,7 @@ Bare day-only inputs such as `!cal 14` or `!cal 1st` are rejected here; include 
 
 #### Single-date specs
 
-These are used by commands such as `!cal set`, `!cal setup date use`, `!cal moon on`, `!cal moon full`, `!cal planes on`, `!cal planes anchor`, and one-time event creation.
+These are used by `!cal set`, `!cal moon on`, and `!cal planes on`.
 
 ```text
 14
@@ -357,73 +337,76 @@ month regardless of how many festivals precede it. **Intercalary festivals
 are set by name** (`Midwinter`, `Shieldmeet`, `Growfest 3`); a bare festival
 name lands on its first day.
 
-#### Recurring event day specs
-
-```text
-6
-18-19
-first Sul
-last Zor
-every Sul
-```
-
 #### Source priority
 
-- Priority `1` is the primary default-source event for a date and supplies the calendar cell color when multiple source-pack events land on the same day.
+- Priority `1` is the primary source for a date and supplies the calendar cell color when multiple source-pack events land on the same day.
 - Unranked sources (`-` in the UI) are tied for last.
-- User-added events always outrank source-pack defaults.
+- Reorder with `!cal source up <name>` / `!cal source down <name>`.
 
-### Core Calendar
+### Core Calendar (any player)
 
 ```text
 !cal
 !cal show [range...]
-!cal send [range...]
+!cal send [range...]      GM-only — the only public broadcast
 !cal now
 !cal today
-!cal list
-!cal help [root|calendar|themes|seasons|eventcolors]
-!cal effects
-!cal set <dateSpec>
-!cal advance [days]
-!cal retreat [days]
+!cal additional
+!cal help [root|calendar|themes|eventcolors]
+!cal event <name>
 ```
 
-The Today dashboard and root help menu also expose `Prompt !cal ...` buttons for `set`, `send`, `add`, `addmonthly`, `addyearly`, `moon on`, and `planes on`. Those buttons submit the same typed commands listed here.
+`!cal help` is a docs-only reference card (status line + short pages), not a full command list. Navigation is button-first: the month stepper (‹ Prev / This Month / Next › / Year) rides under every calendar render, `!cal additional` opens Events/Lunar/Planar panels, and (GM) `!cal manage` opens setup.
 
-### Setup and Onboarding
-
-Before setup is complete, GM `!cal` starts or resumes onboarding and players get a waiting message. Most setup should happen through the buttons, but these are the underlying typed commands:
+### Events, Lunar, Planar panels (any player)
 
 ```text
-!cal setup
-!cal setup start
-!cal setup resume
-!cal setup restart
+!cal events [current|all [year]]
+!cal lunar [current|all [year]]
+!cal planar [current|all [year]]        Eberron only
+```
+
+`!cal events` defaults to `current` (Past / Today / Upcoming, with one week of spillover into the adjacent month on each side). `!cal events all [year]` is a full year listing by month. `!cal lunar` / `!cal planar` follow the same current/all split. Planar panels only return data on Eberron; other worlds get a "Planar canon is Eberron-only" notice.
+
+### Moon Commands (any player)
+
+```text
+!cal moon
+!cal moon summary
+!cal moon on <dateSpec>
+```
+
+Bare `!cal moon` is the full panel (the GM additionally gets a management card with a Moons on/off toggle). `!cal moon summary` is the compact one-liner. `!cal moon on <dateSpec>` inspects a specific day. There is no GM anchor/seed/reseed surface, no `moon full` / `moon new` day-setting, and no live Roll20 page binding — moons are canon-only, phase-only.
+
+### Plane Commands (any player)
+
+```text
+!cal planes
+!cal planes summary
+!cal planes on <dateSpec>
+!cal planes view <PlaneName>
+```
+
+Same shape as moons: bare `!cal planes` is the full panel, `summary` is compact, `on <dateSpec>` inspects a day, `view <PlaneName>` is a single-plane detail card. Eberron only. There is no `planes send` (broadcasting is `!cal send` only), no `planes set` / `anchor` / `seed` / `suppress` — planes are canon-only, read-only.
+
+### GM: Setup
+
+```text
+!cal setup pick <world>
 !cal setup dismiss
-
-!cal setup calendar <system>
-!cal setup variant <variant>
-!cal setup date default
-!cal setup date use <dateSpec>
-!cal setup season <variant>
-!cal setup hemisphere (north|south)
-!cal setup theme (default|<theme>)
-!cal setup defaults (on|off)
-!cal setup moons (on|off)
-!cal setup planes (on|off)
-!cal setup review
-!cal setup apply
+!cal token <paste>
 ```
 
-### Settings and System Controls
+First-run setup is one step: pick a world from the welcome card, done — that world's canonical variant, date, and palette apply immediately. There is no follow-up wizard. `!cal token <paste>` applies a configuration token copied from the web app: it carries **world, date, variant, and palette only**. It does not carry moon or planar anchors — moons and planes are canon-only in this wrapper, so there's nothing for an anchor field to override.
+
+### GM: System Controls
 
 ```text
+!cal manage
 !cal settings
-!cal settings (group|labels|events|moons|planes|offcycle|buttons) (on|off)
+!cal settings (group|labels|moons|planes|buttons) (on|off)
 !cal settings density (compact|normal)
-!cal settings mode (moon|lunar|planes|plane|planar) (calendar|list|both)
-!cal settings verbosity (normal|minimal)
+!cal settings mode planes (calendar|list|both)
 
 !cal theme list
 !cal theme <name>
@@ -431,155 +414,22 @@ Before setup is complete, GM `!cal` starts or resumes onboarding and players get
 
 !cal calendar
 !cal calendar <system> [variant]
-!cal seasons
-!cal seasons <variant>
 !cal hemisphere
 !cal hemisphere (north|south)
 !cal resetcalendar
 ```
 
-### Moon Commands
+`!cal manage` is the GM hub (Set Date, Calendar/Variant, Settings, Sources, Themes, Hemisphere, Broadcast, Reset). `!cal calendar <system> [variant]` only swaps the **name-variant** of the *current* world (e.g. Eberron's Galifar/Druidic/Halfling/Dwarven month names) — switching to a *different* world is not a live setting; it requires `!cal resetcalendar` (which re-runs the one-step world picker) or a `!cal token` paste. `!cal hemisphere` only affects worlds whose season labels vary by hemisphere (Faerûn, Gregorian); elsewhere it's a documented no-op. There is no `!cal seasons` command — season sets are fixed per world, not user-selectable.
 
-`!cal lunar` is an alias for `!cal moon`.
-
-#### Moon views
+### GM: Date
 
 ```text
-!cal moon
-!cal moon lore [MoonName|siberys]
-!cal moon info [MoonName|siberys]
-!cal moon sky [middle_of_night|early_morning|morning|afternoon|evening|nighttime]
-!cal moon visible [time]
-!cal moon up [time]
-!cal moon view <MoonName> [dateSpec]
-!cal moon cal <MoonName> [dateSpec]
-!cal moon on <dateSpec>
-!cal moon date <dateSpec>
+!cal set <dateSpec>
+!cal advance [days]
+!cal retreat [days]
 ```
 
-`!cal moon sky` also accepts the old convenience aliases `midnight`, `dawn`, `noon`, and `dusk`, but the script resolves them into the six canonical time buckets.
-
-#### Sending moon info to players
-
-```text
-!cal moon send low
-!cal moon send medium [1w|1m|3m|6m|10m|Nd|Nw]
-!cal moon send high [1w|1m|3m|6m|10m|Nd|Nw]
-```
-
-Examples:
-
-```text
-!cal moon send medium 3m
-!cal moon send high 10m
-```
-
-#### GM moon controls
-
-```text
-!cal moon seed <word>
-!cal moon full <MoonName> <dateSpec>
-!cal moon new <MoonName> <dateSpec>
-!cal moon reset [MoonName]
-!cal moon page bind <page name>
-!cal moon page refresh
-!cal moon page show
-```
-
-Examples:
-
-```text
-!cal moon full Aryth 14
-!cal moon new Zarantyr Rhaan 14
-!cal moon full Therendor Rhaan 14 998
-```
-
-`!cal moon page bind <page name>` only binds to an existing Roll20 page. Once bound, the script redraws that page automatically on date and moon-state changes, and `!cal moon page show` moves the shared player bookmark there explicitly.
-
-### Plane Commands
-
-`!cal planar` is an alias for `!cal planes`.
-
-#### Plane views
-
-```text
-!cal planes
-!cal planes on <dateSpec>
-!cal planes date <dateSpec>
-```
-
-#### Sending plane info to players
-
-```text
-!cal planes send low
-!cal planes send medium [1m|3m|6m|10m|Nd|Nw]
-!cal planes send high [1m|3m|6m|10m|Nd|Nw]
-```
-
-Examples:
-
-```text
-!cal planes send medium 6d
-!cal planes send high 3m
-```
-
-`!cal planes send ...` gives players a non-interactive summary and whispers the interactive control panel back to the GM. All of those messages currently use `noarchive`.
-
-#### GM plane controls
-
-```text
-!cal planes set <PlaneName> <phase> [days]
-!cal planes clear [PlaneName]
-!cal planes anchor <PlaneName> <phase> <dateSpec>
-!cal planes seed <PlaneName> <year|clear>
-!cal planes suppress <PlaneName> [dateSpec]
-```
-
-`!cal planes clear <PlaneName>` clears that plane's direct override, anchor, GM custom event, and seed override. `!cal planes clear all` also resets the Fernia/Risia link mode to the campaign-seeded default.
-
-Examples:
-
-```text
-!cal planes anchor Fernia coterminous Lharvion 1 996
-!cal planes suppress Syrania
-!cal planes suppress Dolurrh Aryth 12 998
-```
-
-### Event and Source Commands
-
-#### Event commands
-
-`!cal events` is the grouped interface. The direct shortcuts below call the same logic.
-
-```text
-!cal events list
-!cal events add <dateSpec> <name> [#COLOR|color]
-!cal events remove [list|key <KEY>|series <KEY>|<name fragment>]
-!cal events restore [all] [exact] <name...>
-!cal events restore key <KEY>
-
-!cal add <dateSpec> <name> [#COLOR|color]
-!cal remove [list|key <KEY>|series <KEY>|<name fragment>]
-!cal restore [all] [exact] <name...>
-!cal restore key <KEY>
-!cal addmonthly <daySpec> <name> [#COLOR|color]
-!cal addyearly <Month> <DD|DD-DD|ordinal-day> <name> [#COLOR|color]
-!cal addyearly <first|second|third|fourth|fifth|last> <weekday> [of] <Month> <name> [#COLOR|color]
-!cal addannual ...
-```
-
-Examples:
-
-```text
-!cal add 14 Market Day
-!cal add Rhaan 14 Boldrei's Feast gold
-!cal add Rhaan 14 998 Mourning Bell #6D4C41
-!cal addmonthly first Sul Guild Meeting
-!cal addyearly Aryth 13 Wildnight
-!cal addyearly last Sul of Vult Harvest Supper
-```
-
-#### Event source commands
+### GM: Event Sources
 
 ```text
 !cal source list
@@ -588,6 +438,8 @@ Examples:
 !cal source up <name>
 !cal source down <name>
 ```
+
+There is no `!cal event add` / `addmonthly` / `addyearly` / `remove` / `restore` — GM custom events were retired; events are canon-pack only (see [Events](#events)).
 
 </details>
 
@@ -620,30 +472,33 @@ The source code lives in `src/` as TypeScript modules. A build step bundles them
 
 ```
 src/
+  index.ts          — Entry point for bundler
+  boot-register.ts  — Roll20 chat:message registration, dispatch
+  init.ts           — Initialization, public API
   config.ts         — User-editable configuration constants
-  constants.ts      — Calendar systems, themes, palettes
+  constants.ts      — Labels, styles, color themes
+  engine-opts.ts    — Wrapper ↔ engine bridge (serial↔CalendarDate, canon-only opts)
   date-math.ts      — Serial date math, leap years
   color.ts          — Color utilities (delegates to engine)
-  state.ts          — Roll20 state management
+  state.ts          — Roll20 state management, settings
   parsing.ts        — Date parsing, fuzzy matching
-  events.ts         — Event model, occurrences, ranges
+  events.ts         — Event occurrences, ranges, delivery
   rendering.ts      — HTML rendering, mini-calendars
-  ui.ts             — GM menus, theme/season UI
-  commands.ts       — Command routing
-  today.ts          — Combined today view
-  moon.ts           — Moon phases
-  planes.ts         — Planar cycles, effects
-  messaging.ts      — Chat messaging utilities
-  persistent-views.ts — Roll20 handout / page bindings
-  worlds/           — World definitions (Eberron, Faerûn, etc.)
-  showcase/         — Legacy sky-position math (quarantined; used by moon.ts only)
-  init.ts           — Initialization, public API
-  index.ts          — Entry point for bundler
+  ui.ts             — Menus, buttons, dashboard render
+  commands.ts       — Shared routing helpers
+  today.ts          — !cal command dispatch table + Today/Events/Lunar/Planar panels
+  moon.ts           — Moon phases (canon-only)
+  planes.ts         — Planar cycles, effects (canon-only, Eberron)
+  setup.ts          — First-run world picker, boot summary
+  token.ts          — !cal token parse + apply (world/date/variant/palette)
+  messaging.ts      — Chat send/whisper primitives (archive vs noarchive)
+  worlds/           — Engine world registry + wrapper overlays (nine worlds)
+  shared/           — Shared HTML/table-rendering helpers
   types/roll20.d.ts — Roll20 global type declarations
 test/
   calendar_smoke.mjs — Node smoke check against the built bundle
   calendar_smoke.ps1 — PowerShell variant (Windows paste workflow)
-  *.test.ts         — Tests organized by module
+  *.test.ts         — Tests organized by module (see test/ for the current list)
 ```
 
 ### Workflow
@@ -664,52 +519,37 @@ CI runs typecheck, tests, build, and the PowerShell smoke check on every PR and 
 
 ## Supported Settings
 
-Switch settings via the setup wizard (`!cal setup`) or Admin panel (`!cal` → Admin).
+Pick a world from the one-step setup card, or a GM switches worlds later via `!cal resetcalendar` (re-runs the picker) or a `!cal token` paste. Name variants, themes, and other live settings are under `!cal manage`.
 
 <details>
 <summary><strong>Eberron</strong></summary>
 
 - **Calendar:** Galifar Calendar — 12 months × 28 days (336-day year), 7-day week (Sul–Sar), YK era
 - **Variants:** Galifar (standard), Druidic, Halfling, Dwarven month names
-- **Moons:** 12 moons, one per month, each tied to a plane and Dragonmark. Synodic periods range from 27 to 102 days. Full system with eclipses, conjunctions, and Long Shadows.
-- **Planes:** 13 transitive/outer planes with coterminous/remote cycles, manifest zones, and timed overrides
+- **Moons:** 12 moons, one per month, each tied to a plane. Synodic periods range from 27 to 102 days. Phase (illumination + label) only — no sky position, eclipses, conjunctions, or "Long Shadows" framing on this surface.
+- **Planes:** 13 transitive/outer planes with coterminous/remote/neutral cycles, canon-only (no GM seeds, anchors, or suppression)
 - **Events:** Sharn, Khorvaire, Sovereign Host, Dark Six, Silver Flame, and Stormreach event packs
-
-#### Cosmology
-
-Eberron is modeled as Earth-like for baseline astronomical geometry (including axial tilt assumptions for daylight-length variation across the year). **Temperature is not driven by axial/solar-season physics** — seasonal weather pressure is handled through the planar/weather system instead. Axial tilt mostly shows up as broad seasonal daylight framing: longer summer days, shorter winter days, and corresponding shifts in the coarse time-of-day buckets.
-
-#### Ring of Siberys
-
-- Single equatorial ring at **0° inclination**
-- Uses **Saturn's rings** as the physical analog, scaled to fit inside Zarantyr's orbit
-- Extends roughly **370 to 3,480 miles (600 to 5,600 km)** above the surface
-- **Albedo 0.50**, tuned to preserve the setting goal that the ring is visibly bright even by day
-- Contributes about **0.008 lux** of nighttime illumination, forming most of the ~0.010 lux ambient clear-night baseline with starlight
-- The outer edge sits about **2,300 km / 1,430 mi inside Zarantyr's mean orbit**, so the Ring never overlaps the nearest moon's track
 
 #### Moons of Eberron
 
-The Eberron implementation uses fixed synodic periods on a 336-day year scaffold. Exact full/new peaks only move when an external force does so deliberately: festival nudges, canonical associated-plane windows, Long Shadows gobbling, GM anchors, or the Therendor/Barrakas anti-phase coupling.
+Fixed synodic periods on a 336-day year scaffold. `Full` and `New` land on the engine's single inflection day per cycle — not a percentage-illumination threshold.
 
-`Full` means at least `98.004%` illumination; `New` means at most `1.996%` illumination.
+| Moon | Title | Plane | Synodic Period |
+| --- | --- | --- | ---: |
+| Zarantyr | The Storm Moon | Kythri | 27.32 days |
+| Olarune | The Sentinel Moon | Lamannia | 30.81 days |
+| Therendor | The Healer's Moon | Syrania | 34.74 days |
+| Eyre | The Anvil | Fernia | 39.17 days |
+| Dravago | The Herder's Moon | Risia | 44.16 days |
+| Nymm | The Crown | Daanvi | 49.80 days |
+| Lharvion | The Eye | Xoriat | 56.15 days |
+| Barrakas | The Lantern | Irian | 63.31 days |
+| Rhaan | The Book | Thelanis | 71.39 days |
+| Sypheros | The Shadow | Mabar | 80.50 days |
+| Aryth | The Gateway | Dolurrh | 90.76 days |
+| Vult | The Warding Moon | Shavarath | 102.34 days |
 
-| Moon | Title | Plane | Dragonmark | Synodic Period | Apparent Size | Albedo |
-| --- | --- | --- | --- | ---: | ---: | ---: |
-| Zarantyr | The Storm Moon | Kythri | Mark of Storm | 27.32 days | 9.08x | 0.12 |
-| Olarune | The Sentinel Moon | Lamannia | Mark of Sentinel | 30.81 days | 5.73x | 0.22 |
-| Therendor | The Healer's Moon | Syrania | Mark of Healing | 34.74 days | 2.91x | 0.99 |
-| Eyre | The Anvil | Fernia | Mark of Making | 39.17 days | 2.38x | 0.96 |
-| Dravago | The Herder's Moon | Risia | Mark of Handling | 44.16 days | 2.66x | 0.76 |
-| Nymm | The Crown | Daanvi | Mark of Hospitality | 49.80 days | 0.98x | 0.43 |
-| Lharvion | The Eye | Xoriat | Mark of Detection | 56.15 days | 1.11x | 0.30 |
-| Barrakas | The Lantern | Irian | Mark of Finding | 63.31 days | 1.07x | 1.375 |
-| Rhaan | The Book | Thelanis | Mark of Scribing | 71.39 days | 0.49x | 0.32 |
-| Sypheros | The Shadow | Mabar | Mark of Shadow | 80.50 days | 0.62x | 0.071 |
-| Aryth | The Gateway | Dolurrh | Mark of Passage | 90.76 days | 0.69x | 0.275 |
-| Vult | The Warding Moon | Shavarath | Mark of Warding | 102.34 days | 0.74x | 0.23 |
-
-Apparent size is relative to Earth's Moon (Luna). Each moon borrows orbital-shape values from a selected real-world reference body chosen for behavioral fit with its in-setting story.
+Each moon is tied to a plane for flavor (Today dashboard marks a moon "ascendant" when its plane is coterminous or during its associated month), but that tie is cosmetic — plane phase and moon phase are computed independently.
 </details>
 
 <details>
@@ -738,9 +578,10 @@ Apparent size is relative to Earth's Moon (Luna). Each moon borrows orbital-shap
 - **Moons:** Three moons governing magic on Krynn:
   - Solinari (36-day cycle) — Silver Moon, Good magic, White Robes
   - Lunitari (28-day cycle) — Red Moon, Neutral magic, Red Robes
-  - Nuitari (8-day cycle) — Black Moon, Evil magic, Black Robes (hidden from players by default)
+  - Nuitari (8-day cycle) — Black Moon, Evil magic, Black Robes
 - **Events:** Yule, Spring Dawning, Midsummer, Harvest Home
-- **Setup:** Night of the Eye anchor configuration (seed-derived or manual)
+
+Lore-wise Nuitari is hidden from the uninitiated, but the Roll20 surface shows every moon identically to GM and players — there is no per-moon visibility gate here.
 
 </details>
 
@@ -749,8 +590,8 @@ Apparent size is relative to Earth's Moon (Luna). Each moon borrows orbital-shap
 
 - **Calendar:** Exandrian Calendar — 11 months of 28–32 days (328-day year), 7-day week (Miresen–Da'leysen), PD era
 - **Moons:**
-  - Catha (base 29-day cycle with seeded drift) — The Guiding Light, associated with Sehanine the Moonweaver
-  - Ruidus (base 164-day cycle with triangular drift) — The Bloody Eye, appears full when visible, visible only during a 14-day window per cycle
+  - Catha (29-day cycle) — The Guiding Light, associated with Sehanine the Moonweaver
+  - Ruidus (164-day cycle) — The Bloody Eye. Canon lore has it visible only part of the time; the Roll20 surface shows a plain phase cycle with no visibility-window mechanic.
 - **Events:** New Dawn, Hillsgold, Day of Challenging, Harvest's Close, Zenith, The Crystalheart
 
 </details>
@@ -761,8 +602,18 @@ Apparent size is relative to Earth's Moon (Luna). Each moon borrows orbital-shap
 - **Calendar:** Thyatian Calendar — 12 months × 28 days (336-day year), 7-day week (Lunadain–Loshdain), AC era
 - **Moons:**
   - Matera (28-day cycle) — The Visible Moon, governs tides
-  - Patera (32-day cycle) — The Invisible Moon, home of the Ee'aar (hidden from players by default)
+  - Patera (32-day cycle) — The Invisible Moon, home of the Ee'aar. Canon lore keeps it hidden from most; the Roll20 surface shows both moons identically to GM and players.
 - **Events:** New Year, equinoxes, and solstices
+
+</details>
+
+<details>
+<summary><strong>Ravenloft (Barovia)</strong></summary>
+
+- **Calendar:** Barovian Calendar — weekless. Twelve 28-day moons instead of months; dates read "Nth Night of the Mth Moon" rather than a month-day pair.
+- **Variants:** Moons (canonical "First Moon"–"Twelfth Moon" naming) or Slavic Months (community-reconstructed transliterated names)
+- **Moons:** One moon, full on the 1st night of every moon-month by definition — the calendar itself is a lunar cycle.
+- **Seasons, events:** None. The demiplane's gloom has no canonical season or holiday cycle in this wrapper.
 
 </details>
 
