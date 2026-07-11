@@ -561,31 +561,22 @@ export function _dateLabelFragment(mi, day){
     // "21st Night of the Twelfth Moon" (Barovia)
     return { monthName: monthName, day: day, label: _ordinal(day) + ' Night of the ' + monthName };
   }
-  // Plain fallback, also used for 'month_day_year' on a regular (non-leap-slot)
-  // day. NOTE: this label is "<day> <MonthName>" — _displayMonthDayParts has
-  // always returned this order. formatDateLabel's 'month_day_year' case has
-  // always rendered "<MonthName> <day>" instead (matching the DateFormatStyle
-  // doc comment, "January 14, 2024 CE") and reassembles from monthName/day
-  // rather than reusing this label, to avoid silently changing either
-  // caller's pre-existing output. That day/month-order mismatch between the
-  // two functions pre-dates this refactor and is reported, not fixed, here.
+  if (fmt === 'month_day_year'){
+    // "January 14" — Month Day, per the DateFormatStyle doc ("January 14,
+    // 2024 CE"). The banner leap-day slot returned above. Before the
+    // date-label dedup, _displayMonthDayParts rendered this "14 January"
+    // (Day Month) while formatDateLabel rendered "January 14"; the two now
+    // agree on the documented order (Gregorian is the only such world; this
+    // changes its Today banner / panel titles from day-first to month-first).
+    return { monthName: monthName, day: day, label: monthName + ' ' + day };
+  }
+  // Plain fallback for any world whose style isn't matched above.
   return { monthName: monthName, day: day, label: String(day) + ' ' + monthName };
 }
 
 export function formatDateLabel(y, mi, d, includeYear){
-  var cal = getCal();
-  var mobj = cal.months[mi] || {};
-  var fmt = dateFormatFor(ensureSettings().calendarSystem);
   var frag = _dateLabelFragment(mi, d);
-
-  // See the NOTE in _dateLabelFragment: preserve formatDateLabel's historical
-  // "<MonthName> <day>" order for plain 'month_day_year' dates rather than
-  // reusing frag.label (which is "<day> <MonthName>").
-  var isLeapDaySlot = mobj.isIntercalary && String(mobj.name||'') === 'Leap Day';
-  var lbl = (fmt === 'month_day_year' && !isLeapDaySlot)
-    ? (esc(frag.monthName) + ' ' + frag.day)
-    : esc(frag.label);
-
+  var lbl = esc(frag.label);
   if (includeYear) lbl += ', '+esc(String(y))+' '+LABELS.era;
   return lbl;
 }

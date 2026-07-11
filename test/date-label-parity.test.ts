@@ -4,11 +4,10 @@
 // nights / plain) — this test locks them to the shared core in
 // rendering.ts::_dateLabelFragment so they can't silently re-diverge.
 //
-// One pre-existing divergence is intentionally preserved and asserted here
-// rather than "fixed": for 'month_day_year' on a regular (non-leap-slot) day
-// (Gregorian only), formatDateLabel renders "<MonthName> <day>" (e.g.
-// "January 14") while _displayMonthDayParts renders "<day> <MonthName>"
-// (e.g. "14 January"). See the NOTE comment on _dateLabelFragment.
+// Gregorian's 'month_day_year' style renders "<MonthName> <day>" ("January
+// 14", per the DateFormatStyle doc) in BOTH functions. A pre-dedup bug had
+// _displayMonthDayParts rendering "14 January" (day-first); the shared core
+// now gives both the documented month-first order — asserted below.
 import { describe, it } from 'node:test';
 import { strictEqual as assertEquals } from 'node:assert/strict';
 import { freshInstall } from './helpers.js';
@@ -75,10 +74,12 @@ describe('Date label parity — shared core', () => {
     assertEquals(_displayMonthDayParts(leapMi, 1).label, 'February 29');
   });
 
-  it('preserves the pre-existing month/day order mismatch for Gregorian regular days (not fixed by this refactor)', () => {
+  it('renders Gregorian month_day_year month-first ("January 14") in BOTH functions', () => {
     freshInstall();
     applyCalendarSystem('gregorian');
     assertEquals(formatDateLabel(2024, 0, 14, false), 'January 14');
-    assertEquals(_displayMonthDayParts(0, 14).label, '14 January');
+    assertEquals(_displayMonthDayParts(0, 14).label, 'January 14');
+    // Leap-day banner slot stays "February 29" (Feb is month index 1).
+    assertEquals(_displayMonthDayParts(1, 29).label, 'February 29');
   });
 });
