@@ -178,6 +178,10 @@ export type DefaultEvent = {
    *  (year - anchorYear) % everyYears === 0. Absent = every year. */
   everyYears?: number;
   anchorYear?: number;
+  /** Engine `Holiday.firstYear` — the holiday does not occur in years
+   *  before this one (negative years valid; comparison is plain `<`).
+   *  Absent = perpetual/mythic, no gating. */
+  firstYear?: number;
 };
 
 export type EventPackDefinition = {

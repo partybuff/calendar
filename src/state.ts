@@ -17,13 +17,18 @@ import { _getSeasonLabel, currentDateLabel, sendCurrentDate } from './ui.js';
  * ==========================================================================*/
 
 /** Copy the optional year-cadence fields (engine `year_cadence` holidays)
- *  from a source event onto a reconstructed record. Kept lean — the fields
- *  are only present on cadence events (Night of the Eye), so ordinary
- *  records stay two fields smaller in persisted state. */
+ *  and `firstYear` (engine origin-year gate) from a source event onto a
+ *  reconstructed record. Kept lean — the fields are only present on
+ *  cadence/gated events, so ordinary records stay smaller in persisted
+ *  state. `firstYear` is read with `!= null` (not truthy) because 0 and
+ *  negative years (e.g. Birthright's -973) are valid gate values. */
 export function _withCadence(rec, src){
   if (src && src.everyYears){
     rec.everyYears = src.everyYears|0;
     rec.anchorYear = src.anchorYear|0;
+  }
+  if (src && src.firstYear != null){
+    rec.firstYear = src.firstYear|0;
   }
   return rec;
 }
@@ -281,10 +286,14 @@ export function ensureSettings(){
   } else if (_svMig === 'tropic' || _svMig === 'tropical_monsoon'){
     s.seasonVariant = 'tropical';
   }
-  // Backfill for any missing fields.
+  // Backfill for any missing fields. seasonVariant uses a nullish check
+  // (not `!`) because '' is a legitimate value — a world whose
+  // `defaultSeasonKey` is deliberately empty (Barovia: no defined
+  // seasons) persists seasonVariant as '', which must NOT be treated as
+  // "unset" and clobbered back to the default world's season set.
   if (!s.calendarSystem)      s.calendarSystem      = CONFIG_DEFAULTS.calendarSystem;
   if (!s.calendarVariant)     s.calendarVariant     = CONFIG_DEFAULTS.calendarVariant;
-  if (!s.seasonVariant)       s.seasonVariant       = CONFIG_DEFAULTS.seasonVariant;
+  if (s.seasonVariant == null) s.seasonVariant      = CONFIG_DEFAULTS.seasonVariant;
   if (!s.hemisphere)          s.hemisphere          = CONFIG_DEFAULTS.hemisphere;
   s.eventSourcePriority = _normalizeEventSourcePriority(s.eventSourcePriority, s.calendarSystem || CONFIG_DEFAULTS.calendarSystem);
   if (s.uiDensity !== 'compact' && s.uiDensity !== 'normal') s.uiDensity = CONFIG_DEFAULTS.uiDensity;
@@ -513,7 +522,11 @@ export function applyCalendarSystem(sysKey, varKey?){
   // shifts the gregorian transition table); only the *choice* is gone.
   var _prevSys2 = st.calendarSystem || '';
   var _isNewSys = _prevSys2 !== sysKey;
-  st.seasonVariant = sys.defaultSeason || CONFIG_DEFAULTS.seasonVariant;
+  // Nullish (not `||`) fallback — sys.defaultSeason is '' for a world with
+  // no defined seasons (Barovia), which must stick, not fall back to the
+  // config default's season set (applySeasonSet('') then correctly no-ops,
+  // leaving cal.months[i].season null — see applySeasonSet below).
+  st.seasonVariant = sys.defaultSeason != null ? sys.defaultSeason : CONFIG_DEFAULTS.seasonVariant;
   applySeasonSet(st.seasonVariant);
 
   // --- Color theme ----------------------------------------------------------

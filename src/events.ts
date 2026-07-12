@@ -64,15 +64,29 @@ export function compareEvents(a, b){
 }
 
 // Sort an events array so that user events (source=null) come first,
-// then sources in their configured priority order, then unranked sources.
-// Stable: equal-ranked events preserve their incoming order.
+// then sources in their configured priority order, then unranked sources,
+// then 'seasonal' sources dead last. Stable: equal-ranked events preserve
+// their incoming order.
+//
+// Seasonal holidays (world-prefixed 'eberron:seasonal', 'gregorian:seasonal',
+// etc. — civil/almanac bookkeeping: New Year, solstices, GAZ1 season-openers)
+// only earn a calendar cell's fill color when nothing else claims the day.
+// This is enforced structurally by source-name suffix, not a per-world
+// priority-list entry, so it applies uniformly across every world without
+// hand-listing — and it overrides any explicit priority-list position a
+// seasonal source might have (GM reordering via `!cal source` can't promote
+// it off the tail).
+function _isSeasonalSource(src){ return /:seasonal$/.test(String(src||'').toLowerCase()); }
+
 export function sortEventsByPriority(events){
   var pList = (ensureSettings().eventSourcePriority || []).map(function(s){
     return String(s).toLowerCase();
   });
   function rank(e){
     if (!e.source) return 0;                          // user events always first
-    var idx = pList.indexOf(String(e.source).toLowerCase());
+    var src = String(e.source).toLowerCase();
+    if (_isSeasonalSource(src)) return Infinity;       // seasonal → always last
+    var idx = pList.indexOf(src);
     return idx >= 0 ? idx + 1 : pList.length + 1;    // unranked → tied last
   }
   return events.slice().sort(function(a, b){ return rank(a) - rank(b); });
@@ -207,6 +221,10 @@ export function getEventsFor(monthIndex, day, year){
     if (((parseInt(e.month,10)||1)-1) !== m) continue;
     if (e.year != null && (e.year|0) !== y) continue;
     if (e.everyYears && (((y - (e.anchorYear|0)) % e.everyYears) !== 0)) continue;
+    /* Engine `Holiday.firstYear` gate — the holiday does not occur before
+     * its origin year (negative years valid; plain `<` comparison, same
+     * as the engine's resolveHoliday). Mirrors occurrencesInRange below. */
+    if (e.firstYear != null && y < (e.firstYear|0)) continue;
     var ows = Parse.ordinalWeekday.fromSpec(e.day);
     if (ows){
       if (ows.ord === 'every'){
@@ -684,6 +702,10 @@ export function occurrencesInRange(startSerial, endSerial){
       /* Year-cadence holidays (Night of the Eye) only occur every N years
        * from their anchor — the triple-full conjunction period. */
       if (e.everyYears && (((y - (e.anchorYear|0)) % e.everyYears) !== 0)) continue;
+      /* Engine `Holiday.firstYear` gate — same rule as getEventsFor above,
+       * enforced here too since occurrencesInRange scans years directly
+       * rather than calling getEventsFor per day. */
+      if (e.firstYear != null && y < (e.firstYear|0)) continue;
       /* Leap-gated slots (Shieldmeet, Gregorian Leap Day) only exist in
        * their active years — the serial math skips them (date-math.ts),
        * so an occurrence emitted here in an off-year would land on a

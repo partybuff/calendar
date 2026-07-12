@@ -5,10 +5,25 @@ name: Check calendar-engine updates
 # that bumps the dependency and our own patch version (merging that PR cuts
 # a fresh calendar.js release via release.yml). This is the ONLY place the
 # engine dependency gets bumped — nobody edits package.json by hand.
+#
+# target-branch mode: when an engine release and the wrapper compat code
+# for it are COUPLED (the bump alone fails main's tests, and the compat
+# code alone fails against the old pin), dispatch this workflow ON the
+# feature branch with target-branch set to that branch — it bumps the pin,
+# regenerates the lockfile, validates against THAT branch's code, and
+# pushes the bump commit onto it, so pin + compat land and CI together.
 on:
   schedule:
     - cron: '23 8 * * *'   # daily, 08:23 UTC
   workflow_dispatch:
+    inputs:
+      target-branch:
+        description: >-
+          Existing branch to bump IN PLACE (pin + lockfile committed onto
+          it; no PR is opened). Leave empty for the default open-a-PR
+          behavior against the default branch.
+        required: false
+        type: string
 
 permissions:
   contents: write
@@ -19,12 +34,47 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # target-branch mode checks out the branch being bumped; default
+          # mode uses the dispatching/scheduled ref (the default branch).
+          ref: ${{ inputs.target-branch || github.ref }}
 
       - uses: actions/setup-node@v4
         with:
           node-version: 24
 
+      - name: Bump in place on target branch
+        if: inputs.target-branch != ''
+        env:
+          PACKAGES_TOKEN: ${{ secrets.PACKAGES_TOKEN }}
+        run: |
+          set -euo pipefail
+          LATEST=$(npm view @partybuff/calendar-engine version)
+          LOCKED=$(node -p "require('./package-lock.json').packages['node_modules/@partybuff/calendar-engine'].version")
+          if [ "$LATEST" = "$LOCKED" ]; then
+            echo "already on $LOCKED; nothing to bump"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          npm pkg set "dependencies.@partybuff/calendar-engine=^$LATEST"
+          npm version patch --no-git-tag-version
+          npm install   # regenerates package-lock.json against the new engine
+
+          # Validate against THIS branch's code (the whole point of
+          # target-branch mode: the compat code lives here).
+          npm run typecheck
+          npm test
+          npm run build
+          node ./test/calendar_smoke.mjs
+
+          git add package.json package-lock.json
+          git commit -m "chore: bump @partybuff/calendar-engine to ^$LATEST (target-branch mode)"
+          git push origin "HEAD:${{ inputs.target-branch }}"
+
       - name: Compare published vs locked engine version
+        if: inputs.target-branch == ''
         id: ver
         env:
           PACKAGES_TOKEN: ${{ secrets.PACKAGES_TOKEN }}

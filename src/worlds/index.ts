@@ -150,7 +150,7 @@ function eventPacksFromEngine(
 
   type GenEvent = {
     name: string; month: number | 'all'; day: string; color?: string; source: string;
-    everyYears?: number; anchorYear?: number;
+    everyYears?: number; anchorYear?: number; firstYear?: number;
   };
   const bySource = new Map<string, GenEvent[]>();
   for (const h of holidays) {
@@ -159,8 +159,23 @@ function eventPacksFromEngine(
     let everyYears: number | undefined;
     let anchorYear: number | undefined;
     if (h.kind === 'fixed') {
-      month = structMonth.get(h.monthIndex) ?? null;
-      day = (h.endDay != null && h.endDay > h.day) ? (h.day + '-' + h.endDay) : String(h.day);
+      const mIdx = structMonth.get(h.monthIndex) ?? null;
+      const monthSlot = mIdx != null ? structural[mIdx - 1] : null;
+      /* Overflow day (e.g. Gregorian Leap Day: engine fixed holiday at
+       * February/29, but February's canonical `days` is 28 — the 29th
+       * is carved out into its own leap-gated structural intercalary
+       * slot right after February). Single-day holidays only; route to
+       * that slot instead of clamping into a nonexistent regular day. */
+      const overflowSlot = (mIdx != null && h.endDay == null && monthSlot && h.day > monthSlot.days)
+        ? structural[mIdx]
+        : null;
+      if (overflowSlot && overflowSlot.isIntercalary && overflowSlot.leapEvery) {
+        month = mIdx! + 1;
+        day = String(h.day - monthSlot!.days);
+      } else {
+        month = mIdx;
+        day = (h.endDay != null && h.endDay > h.day) ? (h.day + '-' + h.endDay) : String(h.day);
+      }
     } else {
       const r = h.rule;
       if (r.kind === 'intercalary') {
@@ -198,6 +213,14 @@ function eventPacksFromEngine(
     const entry: GenEvent = { name: h.label, month, day, source: sourceKey };
     if (h.color) entry.color = h.color;
     if (everyYears != null) { entry.everyYears = everyYears; entry.anchorYear = anchorYear; }
+    /* `firstYear` gates the holiday's occurrence identically to the
+     * engine's own resolveHoliday/allOccurrencesIn (plain `year <
+     * firstYear`, negative years valid) — carried through _withCadence
+     * (state.ts) to persisted events, and enforced by the
+     * getEventsFor/occurrencesInRange gates in events.ts. */
+    if ((h as { firstYear?: number }).firstYear !== undefined) {
+      entry.firstYear = (h as { firstYear?: number }).firstYear;
+    }
     bySource.get(sourceKey)!.push(entry);
   }
   if (!bySource.size) return undefined;

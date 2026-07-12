@@ -25,7 +25,7 @@
  * I/O); we don't memoize.
  */
 
-import { worlds, planes as enginePlanes } from '@partybuff/calendar-engine/lite';
+import { worlds, planes as enginePlanes, seasons as engineSeasons } from '@partybuff/calendar-engine/lite';
 import type {
   CalendarDate as EngineCalendarDate,
   WorldId as EngineWorldId,
@@ -111,3 +111,14 @@ export function getPlanePositions(): PlanePositions {
  *  need to know the package layout — they import `enginePlanes` from
  *  this bridge and get the same object. */
 export { enginePlanes };
+
+/** "Month N of Y" numeric orientation label for a wrapper serial — the
+ *  engine's own `seasons.label`, canon per-world (regular months render
+ *  "Month 7 of 12"; intercalary days render the "{label} — between months
+ *  X and Y of N" framing). Distinct from the wrapper's own season NAME
+ *  (`_getSeasonLabel` in ui.ts, e.g. "Mid-summer") — this is the numeric
+ *  position, always available even for worlds with no defined seasons
+ *  (Barovia). Used by the today card's season line. */
+export function monthPositionLabel(serial: number): string {
+  return engineSeasons.label(getEngineWorldId(), serialToCalendarDate(serial));
+}
