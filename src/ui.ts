@@ -11,6 +11,7 @@ import { send, sendToAll, sendToGM, sendUiToGM, warnGM, whisper, whisperUi } fro
 import { _getMoonSys, _moonNextThresholdEntry, _moonPeakPhaseDay, _moonPhaseEmoji, _moonPhaseSpanSuffix, moonEnsureSequences, moonPhaseAt } from './moon.js';
 import { PLANE_PHASE_EMOJI, PLANE_PHASE_LABELS, _getAllPlaneData, _isGeneratedNote, _planarNotableToday, _planarYearDays, getPlanarState } from './planes.js';
 import { dateFormatFor } from './worlds/index.js';
+import { monthPositionLabel } from './engine-opts.js';
 
 
 /* ============================================================================
@@ -93,7 +94,9 @@ export function nextForMonthDay(cur, mIndex, d){
 // the exact day rather than just the month. For all others, returns month.season.
 export function _getSeasonLabel(mi, day){
   var st    = ensureSettings();
-  var sv    = st.seasonVariant || CONFIG_DEFAULTS.seasonVariant;
+  // Nullish fallback — '' is a legitimate seasonVariant (a world with no
+  // defined seasons, e.g. Barovia), and must not be treated as "unset".
+  var sv    = (st.seasonVariant != null) ? st.seasonVariant : CONFIG_DEFAULTS.seasonVariant;
   var entry = SEASON_SETS[sv] || {};
   if (!entry.transitions){
     // No transition table — read from month.season (set by applySeasonSet, hemisphere-shifted).
@@ -125,7 +128,8 @@ export function _getSeasonLabel(mi, day){
 // reinstatement moves rendering onto engine `seasons.at`, this gate moves with
 // it and Exandria/Mystara light up correctly.
 export function _hemisphereAffectsActiveWorld(){
-  var sv = ensureSettings().seasonVariant || CONFIG_DEFAULTS.seasonVariant;
+  var stv = ensureSettings().seasonVariant;
+  var sv = (stv != null) ? stv : CONFIG_DEFAULTS.seasonVariant;
   var entry = SEASON_SETS[sv] || {};
   return !!entry.hemisphereAware;
 }
@@ -251,6 +255,18 @@ export function sendCurrentDate(to, gmOnly, opts?){
 
   // Date headline: formal date line + season line
   var _seasonLabel = _getSeasonLabel(c.month, c.day_of_the_month);
+  // Numeric orientation ("Month 9 of 12") from the engine's own
+  // seasons.label — canon per-world, independent of month-naming schemes,
+  // and available even for worlds with no defined seasons (Barovia). The
+  // wrapper's own season NAME (_seasonLabel above) is appended after a
+  // middle-dot separator when the world has one; worlds with none (their
+  // defaultSeasonKey is '', so _getSeasonLabel returns null) show the
+  // position alone, with no dangling separator.
+  var _positionLabel = '';
+  try { _positionLabel = monthPositionLabel(todaySer); } catch (ePos) { _positionLabel = ''; }
+  var _seasonLineText = _positionLabel
+    ? (_seasonLabel ? _positionLabel + ' · ' + _seasonLabel : _positionLabel)
+    : (_seasonLabel || '');
   var currentDate = formalCurrentDateLabel();
   var timeLine = '';
   var dateLine = compact
@@ -259,10 +275,10 @@ export function sendCurrentDate(to, gmOnly, opts?){
   var dashboardTitle = dashboard
     ? '<div style="font-weight:bold;font-size:1.04em;color:#000;margin:0 0 6px 0;">Today&#39;s Calendar</div>'
     : '';
-  var seasonLine = _seasonLabel
+  var seasonLine = _seasonLineText
     ? (compact
-      ? '<div style="' + (dashboard ? 'font-size:.94em;color:#000;margin:0 0 4px 0;font-style:italic;' : 'font-size:.82em;opacity:.7;margin:0 0 3px 0;') + '">' + esc(_seasonLabel) + '</div>'
-      : '<div style="' + (dashboard ? 'font-size:.98em;color:#000;margin:0 0 4px 0;font-style:italic;' : 'font-size:.85em;opacity:.72;margin:0 0 4px 0;') + '">' + esc(_seasonLabel) + '</div>')
+      ? '<div style="' + (dashboard ? 'font-size:.94em;color:#000;margin:0 0 4px 0;font-style:italic;' : 'font-size:.82em;opacity:.7;margin:0 0 3px 0;') + '">' + esc(_seasonLineText) + '</div>'
+      : '<div style="' + (dashboard ? 'font-size:.98em;color:#000;margin:0 0 4px 0;font-style:italic;' : 'font-size:.85em;opacity:.72;margin:0 0 4px 0;') + '">' + esc(_seasonLineText) + '</div>')
     : '';
   var dashboardInfoLineStyle = dashboard
     ? 'font-size:.92em;color:#000;margin-top:3px;line-height:1.6;'

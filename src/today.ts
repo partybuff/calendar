@@ -1066,7 +1066,11 @@ export var commands = {
     var st4 = ensureSettings();
     st4.hemisphere = sub;
     // Re-apply the current season set so name arrays are shifted correctly.
-    applySeasonSet(st4.seasonVariant || CONFIG_DEFAULTS.seasonVariant);
+    // Nullish fallback — '' (a no-seasons world) must not become the config
+    // default's season set. (In practice this command already bails above
+    // via _hemisphereAffectsActiveWorld() for such worlds, but keep the
+    // fallback correct here too rather than relying on that gate alone.)
+    applySeasonSet(st4.seasonVariant != null ? st4.seasonVariant : CONFIG_DEFAULTS.seasonVariant);
     refreshAndSend();
     whisper(m.who, 'Hemisphere: <b>'+esc(sub)+'</b>.');
   }},

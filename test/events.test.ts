@@ -3,7 +3,7 @@ import { describe, it } from "node:test";
 import { strictEqual as assertEquals, notStrictEqual as assertNotEquals, ok as assert } from "node:assert/strict";
 import { freshInstall } from "./helpers.js";
 import { applyCalendarSystem, getCal, ensureSettings, getManualSuppressedSources, titleCase, colorForMonth, weekLength } from "../src/state.js";
-import { getEventsFor, eventKey, compareEvents, getEventColor, isDefaultEvent } from "../src/events.js";
+import { getEventsFor, eventKey, compareEvents, getEventColor, isDefaultEvent, sortEventsByPriority } from "../src/events.js";
 import { _stableHash, sanitizeHexColor, resolveColor, textColor, _relLum, _contrast } from "../src/color.js";
 import { clamp, esc } from "../src/rendering.js";
 
@@ -72,6 +72,50 @@ describe("Events", () => {
     applyCalendarSystem("eberron", "standard");
     const restored = getCal().events.filter((evt: any) => evt.source === "eberron:sharn").length;
     assertEquals(restored, 0, "manually suppressed sources should stay suppressed after calendar changes");
+  });
+});
+
+// ============================================================================
+// Seasonal event fill-color priority
+//
+// 'seasonal' holidays (world-prefixed 'eberron:seasonal', civil/almanac
+// bookkeeping — New Year, solstices) shade a calendar cell only when
+// nothing else is on the day: every other source outranks them for the
+// FILL COLOR (sortEventsByPriority's events[0]), structurally, in every
+// world — not via a per-world priority-list entry.
+// ============================================================================
+
+describe("Seasonal event fill-color priority", () => {
+  it("a day with a seasonal event + another-source event: the other source's color wins", () => {
+    freshInstall();
+    applyCalendarSystem("eberron");
+    const cal = getCal();
+    const year = cal.current.year;
+    // Eberron 1 Zarantyr (month 1, day 1) carries "New Year's Day"
+    // (eberron:seasonal) by default. Add a synthetic non-seasonal event
+    // on the same day and confirm it wins the fill-color slot.
+    cal.events.push({ name: "Test Festival", month: 1, day: "1", year: null, color: "#123456", source: "eberron:sharn" });
+    const events = getEventsFor(0, 1, year);
+    assert(events.some((e: any) => e.source === "eberron:seasonal"), "fixture: seasonal event present");
+    assert(events.some((e: any) => e.name === "Test Festival"), "fixture: other-source event present");
+    const sorted = sortEventsByPriority(events);
+    assertEquals(sorted[0].name, "Test Festival");
+    assertEquals(getEventColor(sorted[0]), "#123456");
+  });
+
+  it("a day with only a seasonal event: the seasonal event's color wins", () => {
+    freshInstall();
+    applyCalendarSystem("eberron");
+    const cal = getCal();
+    const year = cal.current.year;
+    // Eberron 21 Sypheros (month 12, day 21) carries only "Winter
+    // Solstice" (eberron:seasonal) by default — no coincident event.
+    const events = getEventsFor(11, 21, year);
+    assertEquals(events.length, 1, "fixture: Winter Solstice has no other event sharing its day");
+    assertEquals(events[0].source, "eberron:seasonal");
+    const sorted = sortEventsByPriority(events);
+    assertEquals(sorted[0].source, "eberron:seasonal");
+    assertEquals(getEventColor(sorted[0]), events[0].color);
   });
 });
 

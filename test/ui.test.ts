@@ -395,7 +395,10 @@ describe("Task-focused UI", () => {
 
     assert(msg.includes("Wir, 18th of Rhaan, 998 YK"));
     assert(msg.includes("Early autumn"));
-    assert(/font-style:italic[^"]*">Early autumn<\/div>/.test(msg));
+    // Season line is "Month N of Y · <season>" (engine seasons.label
+    // position + the wrapper's own season name) as of the today-card
+    // season-line feature — see test/today-season-line.test.ts.
+    assert(/font-style:italic[^"]*">Month 9 of 12 · Early autumn<\/div>/.test(msg));
     assert(!msg.includes("— Early autumn"));
     // When there are no events, don't print an empty "no events" placeholder —
     // the absence is obvious from the rest of the display.

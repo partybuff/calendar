@@ -16,14 +16,34 @@ import { _sourceAllowedForCalendar, checkInstall, ensureSettings, getCal } from 
 import { toSerial } from '../src/date-math.js';
 import { occurrencesInRange } from '../src/events.js';
 
-/** Wrapper structural index (0-based) for an engine CalendarDate. */
-function structuralIndexFor(wrapperKey: string, d: any): number | null {
+/** Wrapper structural (index, day) for an engine CalendarDate. Usually the
+ *  day carries straight through unchanged — but Gregorian's Leap Day is a
+ *  genuine architecture mismatch: the engine models it as February growing
+ *  to 29 days in a leap year (`{kind:'month', monthIndex:1, day:29}`,
+ *  `intercalaries: []`), while the wrapper carves the 29th into its own
+ *  banner-day intercalary slot immediately after February (so the calendar
+ *  grid can render Feb as a fixed 28 cells + a one-day banner rather than a
+ *  shape-shifting month) — see date-label-parity.test.ts's "renders the
+ *  Gregorian banner leap day" case and rendering.ts's showBannerLeapDay path
+ *  (which looks events up at `febLeapSlot`, day 1). Mirrors the same
+ *  overflow routing worlds/index.ts::eventPacksFromEngine applies when
+ *  composing the event, so this fixture's engine-side key matches what the
+ *  wrapper actually produces. */
+function structuralPositionFor(wrapperKey: string, d: any): { mi: number; day: number } | null {
   for (let mi = 0; ; mi++) {
     const slot = getStructuralSlot(wrapperKey, mi);
     if (!slot) return null;
     const t = slot.translation;
-    if (d.kind === 'month' && t.kind === 'month' && t.engineMonthIndex === d.monthIndex) return mi;
-    if (d.kind === 'intercalary' && t.kind === 'intercalary' && t.intercalaryKey === d.intercalaryKey) return mi;
+    if (d.kind === 'month' && t.kind === 'month' && t.engineMonthIndex === d.monthIndex) {
+      if (d.day > slot.days) {
+        const next = getStructuralSlot(wrapperKey, mi + 1);
+        if (next && next.isIntercalary && next.leapEvery) return { mi: mi + 1, day: d.day - slot.days };
+      }
+      return { mi, day: d.day };
+    }
+    if (d.kind === 'intercalary' && t.kind === 'intercalary' && t.intercalaryKey === d.intercalaryKey) {
+      return { mi, day: d.day };
+    }
   }
 }
 
@@ -66,9 +86,9 @@ describe('engine-events parity (wrapper occurrences == engine allOccurrencesIn)'
           const engineSet = new Set<string>();
           for (const h of group) {
             for (const d of engineHolidays.allOccurrencesIn(engineId, year, h.key)) {
-              const mi = structuralIndexFor(wrapperKey, d);
-              assert(mi != null, `${wrapperKey}/${keys}: engine date has no structural slot`);
-              engineSet.add(mi + '/' + d.day);
+              const pos = structuralPositionFor(wrapperKey, d);
+              assert(pos != null, `${wrapperKey}/${keys}: engine date has no structural slot`);
+              engineSet.add(pos!.mi + '/' + pos!.day);
             }
           }
           const wrapperSet = new Set<string>(
