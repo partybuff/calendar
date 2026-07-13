@@ -240,6 +240,7 @@ The script models the sky as a physical system rather than flavor-only text. Moo
 The moon system is **phases only** — illumination and a phase label per moon per day. There is no sky position, altitude, azimuth, eclipse detection, or "long shadows" framing; none of that ships to Roll20 (it's out of scope for this surface — see `CLAUDE.md`).
 
 - Phase math is engine-owned and canon-only. There is no GM anchor override in Roll20: every moon uses the engine's standard reference date, and the GM cannot re-anchor a moon to a chosen full/new date from chat.
+- **Lunar periods (Eberron only).** The engine ships two published cycle-length models for Eberron's twelve moons: Party Buff's month-matched periods (default) and the official WotC calendar tool's table, under which all twelve moons stood full together on Zarantyr 1, −2202 YK. `!cal settings lunar (partybuff|official)` picks between them. This is a model selection — like a month-name variant — not an anchor override; both tables are engine canon, and the setting only appears on worlds whose engine data carries an official table.
 - `Full` and `New` are single-day **inflection points** — the exact day the engine's phase math crosses that point, not a percentage-illumination threshold. A moon is never "Full" for a multi-day span.
 - Players and the GM see identical moon information. There are no hidden or GM-only moons, and no visibility windows gated by knowledge tier — any per-moon "hidden from players" flavor text in a sourcebook is not modeled as a mechanic here.
 - The Today dashboard highlights any moon that's Full or New today (or arriving within 2 days). `!cal moon` (or `!cal lunar current`) shows every moon's current phase, synodic period, and last/next inflection; `!cal lunar all [year]` lists every Full/New across a year.
@@ -407,6 +408,7 @@ First-run setup is one step: pick a world from the welcome card, done — that w
 !cal settings (group|labels|moons|planes|buttons) (on|off)
 !cal settings density (compact|normal)
 !cal settings mode planes (calendar|list|both)
+!cal settings lunar (partybuff|official)
 
 !cal theme list
 !cal theme <name>
@@ -419,7 +421,7 @@ First-run setup is one step: pick a world from the welcome card, done — that w
 !cal resetcalendar
 ```
 
-`!cal manage` is the GM hub (Set Date, Calendar/Variant, Settings, Sources, Themes, Hemisphere, Broadcast, Reset). `!cal calendar <system> [variant]` only swaps the **name-variant** of the *current* world (e.g. Eberron's Galifar/Druidic/Halfling/Dwarven month names) — switching to a *different* world is not a live setting; it requires `!cal resetcalendar` (which re-runs the one-step world picker) or a `!cal token` paste. `!cal hemisphere` only affects worlds whose season labels vary by hemisphere (Faerûn, Gregorian); elsewhere it's a documented no-op. There is no `!cal seasons` command — season sets are fixed per world, not user-selectable.
+`!cal manage` is the GM hub (Set Date, Calendar/Variant, Settings, Sources, Themes, Hemisphere, Broadcast, Reset). `!cal calendar <system> [variant]` only swaps the **name-variant** of the *current* world (e.g. Eberron's Galifar/Druidic/Halfling/Dwarven month names) — switching to a *different* world is not a live setting; it requires `!cal resetcalendar` (which re-runs the one-step world picker) or a `!cal token` paste. `!cal hemisphere` only affects worlds whose season labels vary by hemisphere (Faerûn, Gregorian); elsewhere it's a documented no-op. `!cal settings lunar (partybuff|official)` picks which lunar cycle lengths Eberron uses — Party Buff's month-matched periods (default) or the official WotC calendar tool's; the row and command only exist on worlds whose engine data ships an official period table (currently Eberron), and it's a choice between two published models, not an anchor override. There is no `!cal seasons` command — season sets are fixed per world, not user-selectable.
 
 ### GM: Date
 
@@ -526,7 +528,7 @@ Pick a world from the one-step setup card, or a GM switches worlds later via `!c
 
 - **Calendar:** Galifar Calendar — 12 months × 28 days (336-day year), 7-day week (Sul–Sar), YK era
 - **Variants:** Galifar (standard), Druidic, Halfling, Dwarven month names
-- **Moons:** 12 moons, one per month, each tied to a plane. Synodic periods range from 27 to 102 days. Phase (illumination + label) only — no sky position, eclipses, conjunctions, or "Long Shadows" framing on this surface.
+- **Moons:** 12 moons, one per month, each tied to a plane. Synodic periods range from 27 to 102 days. Phase (illumination + label) only — no sky position, eclipses, conjunctions, or "Long Shadows" framing on this surface. `!cal settings lunar official` swaps to the official WotC calendar tool's period table (see the moon roster below).
 - **Planes:** 13 transitive/outer planes with coterminous/remote/neutral cycles, canon-only (no GM seeds, anchors, or suppression)
 - **Events:** Sharn, Khorvaire, Sovereign Host, Dark Six, Silver Flame, and Stormreach event packs
 
@@ -534,20 +536,22 @@ Pick a world from the one-step setup card, or a GM switches worlds later via `!c
 
 Fixed synodic periods on a 336-day year scaffold. `Full` and `New` land on the engine's single inflection day per cycle — not a percentage-illumination threshold.
 
-| Moon | Title | Plane | Synodic Period |
-| --- | --- | --- | ---: |
-| Zarantyr | The Storm Moon | Kythri | 27.32 days |
-| Olarune | The Sentinel Moon | Lamannia | 30.81 days |
-| Therendor | The Healer's Moon | Syrania | 34.74 days |
-| Eyre | The Anvil | Fernia | 39.17 days |
-| Dravago | The Herder's Moon | Risia | 44.16 days |
-| Nymm | The Crown | Daanvi | 49.80 days |
-| Lharvion | The Eye | Xoriat | 56.15 days |
-| Barrakas | The Lantern | Irian | 63.31 days |
-| Rhaan | The Book | Thelanis | 71.39 days |
-| Sypheros | The Shadow | Mabar | 80.50 days |
-| Aryth | The Gateway | Dolurrh | 90.76 days |
-| Vult | The Warding Moon | Shavarath | 102.34 days |
+Two published period tables ship with the engine, selected by the GM's **Lunar periods** setting (`!cal settings lunar (partybuff|official)`). The default is Party Buff's month-matched table (each moon full on the 1st of its month in 998 YK); `official` is the WotC calendar tool's table, anchored so all twelve moons stood full together on Zarantyr 1, −2202 YK.
+
+| Moon | Title | Plane | Synodic Period (Party Buff) | Official Period (WotC) |
+| --- | --- | --- | ---: | ---: |
+| Zarantyr | The Storm Moon | Kythri | 27.32 days | 77 days |
+| Olarune | The Sentinel Moon | Lamannia | 30.81 days | 56 days |
+| Therendor | The Healer's Moon | Syrania | 34.74 days | 42 days |
+| Eyre | The Anvil | Fernia | 39.17 days | 63 days |
+| Dravago | The Herder's Moon | Risia | 44.16 days | 91 days |
+| Nymm | The Crown | Daanvi | 49.80 days | 28 days |
+| Lharvion | The Eye | Xoriat | 56.15 days | 98 days |
+| Barrakas | The Lantern | Irian | 63.31 days | 105 days |
+| Rhaan | The Book | Thelanis | 71.39 days | 49 days |
+| Sypheros | The Shadow | Mabar | 80.50 days | 35 days |
+| Aryth | The Gateway | Dolurrh | 90.76 days | 84 days |
+| Vult | The Warding Moon | Shavarath | 102.34 days | 70 days |
 
 Each moon is tied to a plane for flavor (Today dashboard marks a moon "ascendant" when its plane is coterminous or during its associated month), but that tie is cosmetic — plane phase and moon phase are computed independently.
 </details>

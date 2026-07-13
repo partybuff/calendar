@@ -10,7 +10,7 @@ import { _dateLabelFragment, _decKey, _eventSeriesKey, button, clamp, esc, forma
 import { send, sendToAll, sendToGM, sendUiToGM, warnGM, whisper, whisperUi } from './commands.js';
 import { _getMoonSys, _moonNextThresholdEntry, _moonPeakPhaseDay, _moonPhaseEmoji, _moonPhaseSpanSuffix, moonEnsureSequences, moonPhaseAt } from './moon.js';
 import { PLANE_PHASE_EMOJI, PLANE_PHASE_LABELS, _getAllPlaneData, _isGeneratedNote, _planarNotableToday, _planarYearDays, getPlanarState } from './planes.js';
-import { dateFormatFor } from './worlds/index.js';
+import { dateFormatFor, worldHasOfficialLunarPeriods } from './worlds/index.js';
 import { monthPositionLabel } from './engine-opts.js';
 
 
@@ -623,13 +623,22 @@ export function additionalHubHtml(){
 export function settingsPanelHtml(){
   var st = ensureSettings();
   var isEberron = String(st.calendarSystem || '') === 'eberron';
+  // "Lunar periods" is capability-gated, not world-name-gated: it renders
+  // only when the active world's engine moons publish an official cycle
+  // table (Moon.officialCycleDays — currently Eberron). A published-model
+  // pick, not an anchor override; see getMoonOpts() in engine-opts.ts.
+  var hasOfficialLunar = worldHasOfficialLunarPeriods(String(st.calendarSystem || ''));
   function toggle(key, label, isOn){
     return button(label + ': ' + (isOn ? 'ON' : 'OFF'), 'settings ' + key + ' ' + (isOn ? 'off' : 'on'));
   }
   var choose = '<div style="margin:3px 0;">' +
     button('Density: ' + titleCase(_uiDensityValue('')), 'settings density ?{Density|Compact,compact|Normal,normal}') +
     (isEberron ? ' ' + button('Planes View: ' + _displayModeLabel(st.planesDisplayMode), 'settings mode planes ?{Planes view|Calendar,calendar|List,list|Both,both}') : '') +
-    '</div>';
+    (hasOfficialLunar ? ' ' + button('Lunar periods: ' + (st.lunarSource === 'official' ? 'Official (WotC)' : 'Party Buff'), 'settings lunar ?{Lunar periods|Party Buff,partybuff|Official (WotC),official}') : '') +
+    '</div>' +
+    (hasOfficialLunar
+      ? '<div style="font-size:.78em;opacity:.6;margin:1px 0 3px;">Lunar periods: which lunar cycle lengths Eberron uses — Party Buff’s month-matched periods or the official WotC calendar tool’s.</div>'
+      : '');
   var toggles = '<div style="margin:3px 0;">' +
     toggle('moons', 'Moons', st.moonsEnabled !== false) + ' ' +
     (isEberron ? toggle('planes', 'Planes', st.planesEnabled !== false) + ' ' : '') +

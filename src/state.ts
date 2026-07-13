@@ -2,7 +2,7 @@
 import { date as engineDate } from '@partybuff/calendar-engine/lite';
 import { CALENDAR_SYSTEMS, CONFIG_DEFAULTS, CONFIG_MONTH_LENGTHS, CONFIG_START_DATE } from './config.js';
 import { CALENDAR_STRUCTURE_SETS, COLOR_THEMES, DEFAULT_EVENTS, DEFAULT_EVENT_SOURCE_CALENDARS, LABELS, SEASON_SETS, script_name, state_name } from './constants.js';
-import { getEngineId, getStructuralSlot, getWorld } from './worlds/index.js';
+import { getEngineId, getStructuralSlot, getWorld, worldHasOfficialLunarPeriods } from './worlds/index.js';
 import { colorsAPI, resolveColor } from './color.js';
 import { _invalidateSerialCache } from './date-math.js';
 import { DaySpec, Parse } from './parsing.js';
@@ -541,6 +541,18 @@ export function applyCalendarSystem(sysKey, varKey?){
   st.calendarVariant = vk;
   st.eventSourcePriority = _normalizeEventSourcePriority(st.eventSourcePriority, sysKey);
 
+  // Lunar-period source hygiene. `settings.lunarSource` ('official') only
+  // means anything on worlds whose engine moons publish an official cycle
+  // table (Eberron — see worldHasOfficialLunarPeriods). Every world apply
+  // (setup pick, `!cal token`, boot re-apply) funnels through here, so
+  // dropping the field when the active world lacks the capability keeps
+  // state small and makes a later switch back to Eberron start at the
+  // default (Party Buff periods). The default is never stored — absence
+  // IS the default — so there's nothing to write in the capable case.
+  if (st.lunarSource !== undefined && !worldHasOfficialLunarPeriods(sysKey)){
+    delete st.lunarSource;
+  }
+
   // Auto-toggle subsystems based on world capabilities when switching.
   // Only auto-toggle if the previous toggle was also automatic (not manual).
   var _switchCaps = (getWorld(sysKey) || {}).capabilities;
@@ -628,9 +640,9 @@ export function effectiveColorTheme(){
 //     its sole accessor (`getPlanesState`) had zero callers.
 //   - `imported`: `!cal token` anchor persistence (lunarAnchors /
 //     krynnAnchor / planarAnchors / appliedAt / schemaVersion) — moons
-//     and planes are canon-only (`getMoonOpts()` / `getPlanePositions()`
-//     always return `{}`), so these anchors were validated and stored
-//     but never read.
+//     and planes are canon-only (the wrapper never passes anchors to
+//     the engine), so these anchors were validated and stored but
+//     never read.
 function _sweepLegacyStateSlots(root){
   delete root.moons;
   delete root.planes;

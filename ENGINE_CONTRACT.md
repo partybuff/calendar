@@ -250,13 +250,18 @@ The wrapper needs moon **phases** only. Not sky position, not altitude,
 not azimuth, not eclipse math. Anything related to where a moon sits in
 the sky belongs to the web app side.
 
-**Current wrapper usage (post PR #198):** the wrapper always calls
-`moons.phaseOf` / `nextEvent` with an empty opts bag —
-`src/engine-opts.ts::getMoonOpts()` unconditionally returns `{}`. The
-anchor model, `MoonAnchor`, and `krynnAnchor` described below are part
-of the engine's API surface but are never populated from Roll20 — there
-is no in-Roll20 GM anchor override. Read this subsection as "what the
-engine supports," not "what the wrapper currently sends."
+**Current wrapper usage (post PR #198):** the wrapper calls
+`moons.phaseOf` / `nextEvent` with an opts bag that is `{}` except for
+one field — `src/engine-opts.ts::getMoonOpts()` returns
+`{ cycleSource: 'official' }` when the GM's "Lunar periods" setting is
+on AND the active world's moons publish `officialCycleDays` (Eberron
+only), and `{}` otherwise. `cycleSource` is a published-model variant
+selection (engine 0.48.0), not an anchor: it picks between two cycle
+tables the engine itself ships. The anchor model, `MoonAnchor`, and
+`krynnAnchor` described below remain part of the engine's API surface
+but are never populated from Roll20 — there is no in-Roll20 GM anchor
+override. Read the anchor material as "what the engine supports," not
+"what the wrapper currently sends."
 
 ```ts
 interface Moon {
@@ -266,6 +271,13 @@ interface Moon {
   readonly color: string;          // hex, e.g. "#c7a25a"
   readonly cycleDays: number;      // synodic period, integer or decimal
   readonly associatedMonthIndex?: number; // for worlds where a moon "rules" a month
+  // Alternate published cycle length (engine 0.48.0): the official WotC
+  // calendar tool's period table. Present on all twelve Eberron moons,
+  // absent everywhere else. Selected per call via
+  // `PhaseOptions.cycleSource: 'official'`; never mutates `cycleDays`.
+  // The wrapper's capability probe for the GM "Lunar periods" setting:
+  // `world.moons.some(m => m.officialCycleDays != null)`.
+  readonly officialCycleDays?: number;
 }
 
 // Per-campaign anchor declaration. The phase discriminator lets a
@@ -305,6 +317,16 @@ interface MoonPhase {
 interface PhaseOptions {
   readonly anchors?: Readonly<Record<string, MoonAnchor>>;
   readonly krynnAnchor?: CalendarDate;   // Dragonlance only; must be kind: 'month'
+  // Which published cycle table to use (engine 0.48.0). Omitted or
+  // 'default' → `Moon.cycleDays` with the engine's standard per-moon
+  // anchors — byte-identical to pre-0.48 output. 'official' → for every
+  // moon carrying `officialCycleDays`, that period anchored at the WotC
+  // tool's shared alignment instant (all twelve Eberron moons full at
+  // Zarantyr 1, -2202 YK); moons without the field are unaffected. A
+  // model pick, not an anchor override — a consumer-supplied `anchors`
+  // entry still wins for that moon. This is the ONE field the wrapper
+  // populates (GM "Lunar periods" setting, `!cal settings lunar`).
+  readonly cycleSource?: 'default' | 'official';
 }
 
 const moons: {
@@ -652,6 +674,27 @@ revision lands both in the engine and reshapes the moons API.
    exported from `@partybuff/calendar-engine/moons` for consumers
    that want to surface them. (§5.3)
 
+### 8.3 Revision — official lunar-period variant (engine 0.48.0)
+
+1. **`Moon.officialCycleDays?: number`.** Alternate published cycle
+   length from the official WotC Eberron calendar tool. Data-only;
+   present on all twelve Eberron moons, absent on every other world's
+   moons. Never mutates `cycleDays`. (§5.3)
+2. **`PhaseOptions.cycleSource?: 'default' | 'official'`.** Selects
+   which published table `phasesOn` / `phaseOf` / `nextEvent` compute
+   from. Omitted/'default' is byte-identical to pre-0.48 output;
+   'official' re-anchors every `officialCycleDays`-bearing moon at the
+   tool's shared alignment instant (Zarantyr 1, -2202 YK, all twelve
+   full). Harmless no-op on worlds without the data. (§5.3)
+3. **Wrapper consumption.** This is the first (and only) field the
+   wrapper sets on the moons opts bag: the GM "Lunar periods" setting
+   (`!cal settings lunar (partybuff|official)`, persisted as
+   `settings.lunarSource`, absent = default) maps to
+   `{ cycleSource: 'official' }` in `getMoonOpts()` when the active
+   world has the capability. Canon-only stance unchanged — anchors and
+   seeds remain never-populated; this is a choice between two engine-
+   published models, not an override.
+
 ## 9. Reference: what the wrapper does with this
 
 For grounding. None of this affects the contract. Superseded by
@@ -666,10 +709,12 @@ now uses (see §5.3/§5.4 notes).
   state (world, current date, variant, palette, per-source suppression,
   setup status) in `state.PartyBuffCalendar`. There is no
   `lunarAnchors` / `planarAnchors` / `imported` slot any more — moons and
-  planes are canon-only (the engine opts bags are always called with
-  `{}`), so anchor data was write-only and was swept from persisted
-  state in PR #203. There are no `customEvents` — event content is
-  engine canon only, generated from `world.holidays` at render time.
+  planes are canon-only (the wrapper never passes anchors to the
+  engine; the only opts field it ever sets is the §8.3 `cycleSource`
+  model pick, persisted as `settings.lunarSource`), so anchor data was
+  write-only and was swept from persisted state in PR #203. There are
+  no `customEvents` — event content is engine canon only, generated
+  from `world.holidays` at render time.
 - **GM commands (current):** `!cal set <dateSpec>`, `!cal advance [N]`,
   `!cal retreat [N]`, `!cal token <paste>`, `!cal resetcalendar`,
   `!cal manage`, `!cal settings ...`, `!cal theme ...`, `!cal calendar

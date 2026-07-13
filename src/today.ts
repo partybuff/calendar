@@ -13,7 +13,7 @@ import { _normalizePackedWords, _playerTodayHtml, _showDefaultCalView, cleanWho,
 import { _getMoonSys, _moonLastEvent, _moonNextEvent, _moonPeakPhaseDay, _moonPhaseEmoji, handleMoonCommand, moonEnsureSequences, moonPhaseAt } from './moon.js';
 import { getPlanarState, _getAllPlaneData, _getPlaneData, handlePlanesCommand } from './planes.js';
 import { enginePlanes, getPlanePositions, serialToCalendarDate } from './engine-opts.js';
-import { engineEventDescription } from './worlds/index.js';
+import { engineEventDescription, worldHasOfficialLunarPeriods } from './worlds/index.js';
 
 
 // ── Today — Combined detail from all subsystems ────────────────────────
@@ -869,7 +869,8 @@ export var commands = {
       return whisperUi(m.who,
         'Usage: <code>!cal settings (group|labels|moons|planes|buttons) (on|off)</code><br>'+
         '<code>!cal settings density (compact|normal)</code> &nbsp;·&nbsp; '+
-        '<code>!cal settings mode planes (calendar|list|both)</code>'
+        '<code>!cal settings mode planes (calendar|list|both)</code> &nbsp;·&nbsp; '+
+        '<code>!cal settings lunar (partybuff|official)</code>'
       );
     }
     // No key → the self-describing Settings panel (the button surface).
@@ -891,6 +892,28 @@ export var commands = {
         return whisperUi(m.who,'Usage: <code>!cal settings mode planes (calendar|list|both)</code>');
       }
       st.planesDisplayMode = modeTok;
+      refreshAndSend();
+      return whisperUi(m.who, settingsPanelHtml());
+    }
+    if (key === 'lunar'){
+      // "Lunar periods" — which published cycle-length table the engine
+      // uses for this world's moons: Party Buff's month-matched periods
+      // (default; nothing stored) or the official WotC calendar tool's
+      // (`settings.lunarSource = 'official'` → getMoonOpts() sends
+      // `{ cycleSource: 'official' }`). A model pick, not an anchor
+      // override. Capability-gated like the hemisphere command: only
+      // worlds whose engine moons publish an official table (Eberron)
+      // can switch, so elsewhere this explains itself instead of
+      // claiming a false success.
+      if (!worldHasOfficialLunarPeriods(String(st.calendarSystem || ''))){
+        return whisperUi(m.who,
+          'Lunar periods have no effect on this world — only worlds with an official cycle table (Eberron) can switch.');
+      }
+      if (!/^(partybuff|official)$/.test(val)){
+        return whisperUi(m.who,'Usage: <code>!cal settings lunar (partybuff|official)</code>');
+      }
+      if (val === 'official') st.lunarSource = 'official';
+      else delete st.lunarSource; // default is never stored
       refreshAndSend();
       return whisperUi(m.who, settingsPanelHtml());
     }
