@@ -353,6 +353,19 @@ export function resolveWorldKey(id: string): string | null {
   return null;
 }
 
+/** True when a world's engine moons publish an official (WotC calendar
+ *  tool) cycle-length table — `Moon.officialCycleDays`, selectable per
+ *  call via `PhaseOptions.cycleSource: 'official'`. Currently Eberron
+ *  only. Gates the GM "Lunar periods" setting: the settings row and the
+ *  `!cal settings lunar` command only exist where the engine ships the
+ *  alternate table. */
+export function worldHasOfficialLunarPeriods(wrapperKey: string): boolean {
+  const engineId = getEngineId(String(wrapperKey || '').toLowerCase());
+  if (!engineId) return false;
+  const engine = engineWorlds.get(engineId);
+  return !!engine.moons && engine.moons.some((m) => m.officialCycleDays != null);
+}
+
 /** Engine holiday `description` for an event by its display label, in the
  *  given wrapper world (case-insensitive). Read live from engine
  *  `world.holidays`, so editing lore in the engine auto-bumps to Roll20 —

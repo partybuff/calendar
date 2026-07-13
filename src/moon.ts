@@ -130,9 +130,11 @@ export function _getMoonSys(sysKeyOverride?){
 
 // Dragonlance Night-of-the-Eye and per-moon fixed-anchor resolution
 // previously lived here. Both are engine-owned as of PR 2c. Per #198,
-// `getMoonOpts()` always returns `{}` — moons are canon-only, with no
-// GM-tunable anchors — so the wrapper never resolves or threads anchors
-// locally, and no `state.imported` anchor data is read here at all.
+// moons are canon-only, with no GM-tunable anchors — the wrapper never
+// resolves or threads anchors locally, and no `state.imported` anchor
+// data is read here at all. The only engine opt `getMoonOpts()` ever
+// sets is the published-model pick `cycleSource` (the GM "Lunar
+// periods" setting, Eberron only); anchors stay empty always.
 
 // ---------------------------------------------------------------------------
 // 20b) State helpers

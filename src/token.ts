@@ -15,13 +15,18 @@
 // shape. World, date, variant and palette are applied via the existing
 // helpers (`applyCalendarSystem`, `setDate`, `ensureSettings`).
 //
-// Per PR #198, moons and planes are canon-only — `getMoonOpts()` and
-// `getPlanePositions()` always return `{}` — so a token's lunar/krynn/
+// Per PR #198, moons and planes are canon-only — the wrapper never
+// passes anchors to the engine (`getPlanePositions()` always returns
+// `{}`; the only field `getMoonOpts()` ever sets is the GM's local
+// published-model pick, `cycleSource`) — so a token's lunar/krynn/
 // planar anchor fields can never affect what players see. Rather than
 // validate and persist inert data, this wrapper doesn't parse those
 // fields at all: a token carries world/date/variant/palette only. Any
 // `lunarAnchors` / `krynnAnchor` / `planarAnchors` on an incoming
-// payload are silently ignored (not validated, not stored).
+// payload are silently ignored (not validated, not stored). The
+// "Lunar periods" setting itself is NOT token-carried either — it's a
+// live `!cal settings lunar` toggle; an unknown `lunarSource` field on
+// a payload is ignored like any other unknown field.
 
 import { CALENDAR_SYSTEMS } from './config.js';
 import { cleanWho, whisper, whisperUi } from './messaging.js';
@@ -155,11 +160,12 @@ export function parseToken(raw: string): ParseResult {
   }
 
   // `lunarAnchors` / `krynnAnchor` / `planarAnchors` are NOT validated or
-  // read here. Per #198, moons and planes are canon-only — the engine
-  // opts bags (`getMoonOpts()` / `getPlanePositions()`) always return
-  // `{}` — so those fields, even if a producer still sends them, can
-  // never affect what players see. A token carries world/date/variant/
-  // palette only.
+  // read here. Per #198, moons and planes are canon-only — the wrapper
+  // never sends anchors to the engine — so those fields, even if a
+  // producer still sends them, can never affect what players see. A
+  // token carries world/date/variant/palette only (the "Lunar periods"
+  // model pick is a live `!cal settings lunar` setting, not token
+  // cargo; a stray `lunarSource` field is ignored the same way).
 
   return { ok: true, token: payload as Token };
 }

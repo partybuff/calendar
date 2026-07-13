@@ -15,11 +15,12 @@
  *      `getStructuralSlot()` table from `src/worlds/index.ts` encodes
  *      that mapping per-slot.
  *
- * Moons and planes are canon-only (#198): `getMoonOpts()` /
- * `getPlanePositions()` below always return `{}` — there is no
- * per-campaign anchor state to read any more (`state.imported` was
- * retired as a follow-up; a `!cal token` no longer carries anchor
- * fields at all).
+ * Moons and planes are canon-only (#198): there is no per-campaign
+ * anchor state to read any more (`state.imported` was retired as a
+ * follow-up; a `!cal token` no longer carries anchor fields at all).
+ * `getPlanePositions()` always returns `{}`; `getMoonOpts()` returns
+ * `{}` except for the one non-anchor field the GM can set — the
+ * published-model pick `cycleSource` (see its doc comment).
  *
  * Every call here is cheap (object construction + small lookups, no
  * I/O); we don't memoize.
@@ -36,7 +37,7 @@ import type {
 import { state_name } from './constants.js';
 import { ensureSettings } from './state.js';
 import { fromSerial as wrapperFromSerial } from './date-math.js';
-import { getEngineId, getStructuralSlot } from './worlds/index.js';
+import { getEngineId, getStructuralSlot, worldHasOfficialLunarPeriods } from './worlds/index.js';
 
 /** Engine WorldId for the active world. The engine's `moons` and
  *  `date` namespace methods both take a WorldId string. Throws if the
@@ -93,10 +94,25 @@ export function serialToCalendarDate(serial: number): EngineCalendarDate {
 /** Moon phase options for engine queries. Canon-only: moons always use the
  *  engine's standard default-seed anchors — GM in-Roll20 anchor overrides
  *  were cut (CLAUDE.md: planes/moons are canon-only, no overrides). The engine
- *  treats `{}` as canon. A future live token may set world/date/variant/
- *  palette, but the standard set from the default seed is the only anchor
- *  pathway; there is no per-campaign override. */
+ *  treats `{}` as canon; `anchors` / `krynnAnchor` are never populated.
+ *
+ *  The ONE field the wrapper may set is `cycleSource: 'official'` — the
+ *  GM "Lunar periods" setting (`settings.lunarSource`, `!cal settings
+ *  lunar official`). That is a published-model variant selection (like
+ *  month-name variants), NOT a GM anchor override: it picks between two
+ *  cycle tables the engine itself ships for the world (Party Buff's
+ *  default `cycleDays` vs the WotC calendar tool's `officialCycleDays`,
+ *  Eberron only). The canon-only policy — no anchors, no seeds — is
+ *  unchanged. Guarded on `worldHasOfficialLunarPeriods` so a stale flag
+ *  on a world with no official table degrades to `{}` (the engine would
+ *  no-op it anyway; the guard keeps the opts bag honest). Absent
+ *  setting → `{}`, byte-identical to the pre-setting behavior. */
 export function getMoonOpts(): PhaseOptions {
+  const st = ensureSettings();
+  if (st.lunarSource === 'official' &&
+      worldHasOfficialLunarPeriods(String(st.calendarSystem || ''))) {
+    return { cycleSource: 'official' };
+  }
   return {};
 }
 

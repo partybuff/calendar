@@ -33,7 +33,12 @@ below, treat it as legacy and confirm with the user before extending it.
   Dragonlance (Krynn), Exandria, Mystara, Barovia (Ravenloft), Birthright,
   Gregorian.
 - Moon **phases** (illumination + label only). No sky position, altitude,
-  azimuth, eclipse math, or "long shadows" framing.
+  azimuth, eclipse math, or "long shadows" framing. One live setting:
+  `!cal settings lunar (partybuff|official)` picks between the engine's
+  two published Eberron cycle tables (`PhaseOptions.cycleSource`,
+  engine 0.48) — a model choice like name variants, not an anchor;
+  canon-only (no anchors, no seeds) is unchanged. Capability-gated on
+  `Moon.officialCycleDays`, so the control only exists on Eberron.
 - Eberron planar events surfaced in the Planar Current/All panels.
   Canon-only — no GM-tunable seeds, no off-cycle generation, no overrides.
 - Events display, engine-canon only. ALL event content is generated
@@ -50,9 +55,12 @@ below, treat it as legacy and confirm with the user before extending it.
   the one-step world picker) or a `!cal token` paste. The `!cal token`
   pipeline IS operational (`src/token.ts`) — it applies world / date /
   variant / palette only. It does NOT carry lunar/planar anchor
-  overrides: moons and planes are canon-only, so the wrapper always
-  calls the engine with an empty opts bag, and any anchor fields on an
-  incoming token are silently ignored (not validated, not stored).
+  overrides: moons and planes are canon-only, so the wrapper never
+  passes anchors to the engine (the only opts field it ever sets is
+  the `cycleSource` model pick behind the Lunar-periods setting), and
+  any anchor fields on an incoming token are silently ignored (not
+  validated, not stored). The Lunar-periods setting is not token cargo
+  either.
 - Whisper-first UX. `!cal` is the only chat entry point and every
   reply is whispered to the caller; `!cal send` (GM-only) is the
   single public broadcast surface.
